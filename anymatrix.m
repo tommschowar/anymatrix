@@ -172,8 +172,10 @@ function varargout = anymatrix(varargin)
     % Execute the specified command.
     if startsWith('all', command)
         varargout{1} = matrix_IDs;
+
     elseif startsWith('contents', command)
         show_contents(arg, root_path);
+
     elseif startsWith('groups', command)
         if nargin == 1
             varargout{1} = group_IDs;
@@ -181,17 +183,19 @@ function varargout = anymatrix(varargin)
             varargout{1} = matrix_IDs(contains(matrix_IDs, ...
                                                strcat(arg, '/')));
         else
-            [set_IDs, group_IDs, matrix_IDs, properties] = ...
-                update_git_group(arg, varargin{3}, root_path);
+            error( 'anymatrix:git', 'Git functionaly got removed.' );
         end
+
     elseif startsWith('help', command)
         if nargin == 1
             help anymatrix;
         else
             show_matrix_help(arg);
         end
+
     elseif startsWith('lookfor', command)
         varargout{1} = lookfor_term(arg, matrix_IDs, root_path);
+
     elseif startsWith('properties', command)
         if nargin == 1
             [~, I] = sort(lower(supported_properties));
@@ -202,11 +206,12 @@ function varargout = anymatrix(varargin)
         else
             varargout{1} = search_by_properties(arg, matrix_IDs, properties);
         end
+
     elseif startsWith('scan', command)
         supported_properties = prop_list();
-        [set_IDs, group_IDs, matrix_IDs, properties] = ...
-            scan_filesystem(supported_properties, root_path);
-        disp('Anymatrix scanning done.');
+        scan_filesystem(supported_properties, root_path, true);
+        return;
+
     elseif startsWith('sets', command)
         if nargin == 1
             varargout{1} = set_IDs;
@@ -229,6 +234,7 @@ function varargout = anymatrix(varargin)
                 out_ind = out_ind + 1;
             end
         end
+
     elseif startsWith('test', command)
         if nargin == 1
             for group_id = group_IDs.'
@@ -237,8 +243,10 @@ function varargout = anymatrix(varargin)
         else
             run_group_tests(arg, root_path);
         end
+
     else
         [varargout{1:nargout}] = generate_matrix(command, varargin{2:nargin});
+
     end
 
 end
@@ -279,47 +287,6 @@ function capture_some_common_errors( numargin, arg, command, set_IDs, group_IDs,
     elseif (numargin > 3) || ((numargin == 3) && ...
             ~startsWith('groups', varargin{1}))
         error('Anymatrix command was not recognized (too many inputs).');
-    end
-end
-
-% Try to run function setup() if current group has one.
-function run_setup_function(group_private_folder)
-    run_function_if_present(group_private_folder, 'setup');
-end
-
-% Try to run function update() if current group has one.
-function run_update_function(group_private_folder)
-    run_function_if_present(group_private_folder, 'update');
-end
-
-% Run function if present.
-function run_function_if_present(new_folder, function_name)
-    current_folder = cd(new_folder);
-    if exist([function_name '.m'], 'file')
-        fprintf('Running function %s()...', function_name);
-        feval(function_name);
-        fprintf('done.\n');
-    end
-    cd(current_folder);
-end
-
-% Check if a folder in anymatrix root directory is a group folder.
-% Group directories have one private/ directory and one file named
-% anymatrix_<dir_name>.m where <dir_name> is the directory name.
-function out = is_group_dir(directory, root_path)
-    % Check dir is not current or previous directories '.' and '..',
-    % and check dir has two files additionally to '.' and '..'.
-    if (any(strcmp(directory, {'.', '..'})) || ...
-            (length(dir(strcat(root_path, '/', directory)))) ~= 4 ...
-       )
-        out = false;
-    else
-        % Check dir has a 'private' directory and a file
-        % anymatrix_<dir_name>.
-        out = ~(isempty(dir(strcat(root_path, '/', directory, ...
-                                   '/private/'))) || ...
-                isempty(dir(strcat(root_path, '/', directory, ...
-                                   '/anymatrix_', directory, '.m'))));
     end
 end
 
@@ -375,39 +342,6 @@ function IDs = search_by_properties(expression, matrix_IDs, properties)
             IDs = [IDs; matrix_IDs{k}];  %#ok<AGROW>
         end
     end
-end
-
-% Fetch the properties of a specified matrix.
-function [P, temp] = get_properties(matrix_ID, root_path)
-    slashloc = find(matrix_ID == '/');
-    group_name = matrix_ID(1:slashloc-1);
-    path_to_group = [root_path, '/', group_name, '/private/'];
-    matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
-    handle = str2func(strcat('anymatrix_', group_name));
-    P = {};
-    % Get properties from the M-file of the matrix.
-    mfile_path = strcat(path_to_group, matrix_name, '.m');
-    if isfile(mfile_path)
-        mfile_contents = fileread(mfile_path);
-        if (contains(mfile_contents, 'properties = {') || ...
-            contains(mfile_contents, 'properties= {') || ...
-            contains(mfile_contents, 'properties ={') || ...
-            contains(mfile_contents, 'properties={') ...
-           )
-            noutputs = nargout(strcat(path_to_group, matrix_name));
-            temp = {};
-            [temp{1:noutputs-1},P] = handle(matrix_name);
-        end
-    end
-    % Get other properties from the entry in the properties.m file.
-    if isfile(strcat(path_to_group, 'am_properties.m'))
-        temp = handle('am_properties');
-        if ismember(matrix_name, temp(:, 1))
-            temp = temp{strcmp(matrix_name, temp(:, 1)), 2};
-            P = [P, temp(~ismember(temp, P))];
-        end
-    end
-    P = P.';
 end
 
 % Generate a specified matrix with the given parameters, if any.
@@ -468,63 +402,6 @@ function show_contents(group_ID, root_path)
      else
          error('No Contents.m exists for that group.')
      end  
-end
-
-% Create or update a specified git group.
-function [set_IDs, group_IDs, matrix_IDs, properties] = update_git_group(group_ID, repo_ID, root_path)
-    group_folder = strcat(root_path, '/', group_ID, '/');
-    % If the group does not exist locally, create folders and clone it.
-    if ~isfolder(group_folder)
-        if count(repo_ID, '/') > 1 || ...
-        contains(repo_ID, ':') || contains(repo_ID, '@')
-            status = system(strcat( ...
-                "git clone ", """", repo_ID, """ ", ...
-                """", group_folder, 'private"'), '-echo');
-        else
-            status = system(strcat( ...
-                'git clone "https://github.com/', repo_ID, ...
-                ".git"" ", """", group_folder, 'private"'), ...
-                '-echo');
-        end
-        % Create a bridge file to the private/ dir of the group.
-        if isfile(strcat(...
-                group_folder, 'private/anymatrix_', group_ID, '.m'))
-            movefile(strcat(...
-                group_folder, 'private/anymatrix_', group_ID, '.m'),...
-                strcat(...
-                group_folder, 'anymatrix_', group_ID, '.m'));
-        else
-            fileID = fopen(strcat(group_folder, ...
-                                  'anymatrix_', group_ID, '.m'), 'w');
-            temp = strcat('function varargout = anymatrix_', ...
-                group_ID, '(matrix_name, varargin)\n', ...
-                'handle = str2func(matrix_name);\n', ...
-                '[varargout{1:nargout}]', ...
-                '= handle(varargin{1:nargin-1});\n end');
-            fprintf(fileID, temp);
-            fclose(fileID);
-        end
-
-        if status == 0
-            disp('Anymatrix remote group cloned.');
-            run_setup_function([group_folder 'private/']);
-        else
-            rmdir(group_folder, 's');
-        end
-    else % Group exists. Run git pull to update it.
-        if ~isfolder(strcat(group_folder, 'private/.git'))
-            error('Specified group is not a git group.');
-        else
-            [exit_code, output] = system('git pull', '-echo');  %#ok<ASGLU>
-            repository_changed = ~strcmp(output,...
-                                         ['Already up-to-date.', newline]);
-            if repository_changed
-                run_update_function([group_folder 'private/']);
-            end
-        end
-    end
-    % Rescan the anymatrix file system.
-    [set_IDs, group_IDs, matrix_IDs, properties] = scan_filesystem(supported_properties, root_path);
 end
 
 % Run a testsuite of a particular group.
