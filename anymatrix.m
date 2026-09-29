@@ -285,7 +285,110 @@ function varargout = anymatrix(varargin)
         [varargout{1:nargout}] = generate_matrix(command, varargin{2:nargin});
     end
 
+end
 
+% Top level function for scanning the files.
+function [set_IDs, groups, matrix_IDs, properties] = scan_filesystem(supported_properties, root_path)
+    set_IDs = scan_sets(root_path);
+    groups = scan_groups(root_path);
+    matrix_IDs = scan_matrices(groups, root_path);
+    properties = scan_properties(matrix_IDs, supported_properties, root_path);
+end
+
+% Scan the sets folder and obtain the set IDs.
+function set_IDs = scan_sets( root_path )
+    set_IDs = {dir(strcat(root_path, '/sets/*.txt')).name};
+    
+    % Remove '.txt' extensions from the IDs.
+    for k = 1:length(set_IDs)
+        dotloc = find(set_IDs{k} == '.');
+        set_IDs{k} = set_IDs{k}(1:dotloc(1)-1);
+    end
+    set_IDs = set_IDs.';
+end
+
+% Try to run function setup() if current group has one.
+function run_setup_function(group_private_folder)
+    run_function_if_present(group_private_folder, 'setup');
+end
+
+% Try to run function update() if current group has one.
+function run_update_function(group_private_folder)
+    run_function_if_present(group_private_folder, 'update');
+end
+
+% Run function if present.
+function run_function_if_present(new_folder, function_name)
+    current_folder = cd(new_folder);
+    if exist([function_name '.m'], 'file')
+        fprintf('Running function %s()...', function_name);
+        feval(function_name);
+        fprintf('done.\n');
+    end
+    cd(current_folder);
+end
+
+% Check if a folder in anymatrix root directory is a group folder.
+% Group directories have one private/ directory and one file named
+% anymatrix_<dir_name>.m where <dir_name> is the directory name.
+function out = is_group_dir(directory, root_path)
+    % Check dir is not current or previous directories '.' and '..',
+    % and check dir has two files additionally to '.' and '..'.
+    if (any(strcmp(directory, {'.', '..'})) || ...
+            (length(dir(strcat(root_path, '/', directory)))) ~= 4)
+        out = false;
+    else
+        % Check dir has a 'private' directory and a file
+        % anymatrix_<dir_name>.
+        out = ~(isempty(dir(strcat(root_path, '/', directory, ...
+                                   '/private/'))) || ...
+                isempty(dir(strcat(root_path, '/', directory, ...
+                                   '/anymatrix_', directory, '.m'))));
+    end
+end
+
+% Scan the root folder and obtain the group IDs.
+function IDs = scan_groups( root_path )
+    contents = dir(root_path);
+    IDs = {};
+    for k = 1:length(contents)
+        if contents(k).isdir && is_group_dir(contents(k).name, root_path)
+            IDs{end+1} = contents(k).name;  %#ok<AGROW>
+            addpath(strcat(root_path, '/', contents(k).name));
+        end
+    end
+    IDs = IDs.';
+end
+
+% Scan the group folders and obtain the matrix IDs.
+function matrix_IDs = scan_matrices(groups, root_path)
+    matrix_IDs = {};
+    for group = groups.'
+        path_to_group = [root_path, '/', group{1}, '/private/'];
+        mfiles = dir([path_to_group, '*.m']);
+        for mfile = mfiles.'
+            % Find which .m files are matrix-generating files.
+            mfile_contents = fileread([path_to_group, mfile.name]);
+            if (contains(mfile_contents, 'properties = {') || ...
+                contains(mfile_contents, 'properties= {') || ...
+                contains(mfile_contents, 'properties ={') || ...
+                contains(mfile_contents, 'properties={'))
+                matrix_IDs = [
+                    matrix_IDs; 
+                    [group{1}, '/', extractBefore(mfile.name, '.m')]
+                    ];  %#ok<AGROW>
+            end
+        end
+        
+        % Read matrix IDs that are placed in properties.m files and
+        % add them if they are not in yet from the M-files.
+        if (isfile(strcat(path_to_group, 'am_properties.m')))
+            handle = str2func(strcat('anymatrix_', group{1}));
+            P = handle('am_properties');
+            moreIDs = strcat(group{1}, '/', P(:,1));
+            matrix_IDs = [matrix_IDs; moreIDs(~ismember(moreIDs, matrix_IDs))];  %#ok<AGROW>
+        end
+    end
 end
 
 % Search for matrices that have properties, according to a specified
@@ -342,58 +445,36 @@ function IDs = search_by_properties(expression, matrix_IDs, properties)
     end
 end
 
-% Look for a pattern inside all matrix help comments in the collection.
-function found_IDs = lookfor_term(term, matrix_IDs, root_path)
-    found_IDs = {};
-    for ID_cell = matrix_IDs.'
-        matrix_ID = ID_cell{1};
-        slashloc = find(matrix_ID == '/');
-        group_name = matrix_ID(1:slashloc-1);
-        matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
-        path_to_mat = [root_path, '/', group_name, '/private/', ...
-            matrix_name];
-        if strcmp('gallery', group_name)
-            H = help(strcat('private/', matrix_name));
-        elseif strcmp('matlab', group_name)
-            H = help(matrix_name);
-        else
-            H = help(path_to_mat);
-        end
-        if contains(H, term, 'IgnoreCase', true)
-            found_IDs = [found_IDs; matrix_ID];  %#ok<AGROW>
-        end
-    end
-end
-
-% Scan the group folders and obtain the matrix IDs.
-function matrix_IDs = scan_matrices(groups, root_path)
-    matrix_IDs = {};
-    for group = groups.'
-        path_to_group = [root_path, '/', group{1}, '/private/'];
-        mfiles = dir([path_to_group, '*.m']);
-        for mfile = mfiles.'
-            % Find which .m files are matrix-generating files.
-            mfile_contents = fileread([path_to_group, mfile.name]);
-            if (contains(mfile_contents, 'properties = {') || ...
-                contains(mfile_contents, 'properties= {') || ...
-                contains(mfile_contents, 'properties ={') || ...
-                contains(mfile_contents, 'properties={'))
-                matrix_IDs = [
-                    matrix_IDs; 
-                    [group{1}, '/', extractBefore(mfile.name, '.m')]
-                    ];  %#ok<AGROW>
-            end
-        end
-        
-        % Read matrix IDs that are placed in properties.m files and
-        % add them if they are not in yet from the M-files.
-        if (isfile(strcat(path_to_group, 'am_properties.m')))
-            handle = str2func(strcat('anymatrix_', group{1}));
-            P = handle('am_properties');
-            moreIDs = strcat(group{1}, '/', P(:,1));
-            matrix_IDs = [matrix_IDs; moreIDs(~ismember(moreIDs, matrix_IDs))];  %#ok<AGROW>
+% Fetch the properties of a specified matrix.
+function [P, temp] = get_properties(matrix_ID, root_path)
+    slashloc = find(matrix_ID == '/');
+    group_name = matrix_ID(1:slashloc-1);
+    path_to_group = [root_path, '/', group_name, '/private/'];
+    matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
+    handle = str2func(strcat('anymatrix_', group_name));
+    P = {};
+    % Get properties from the M-file of the matrix.
+    mfile_path = strcat(path_to_group, matrix_name, '.m');
+    if isfile(mfile_path)
+        mfile_contents = fileread(mfile_path);
+        if (contains(mfile_contents, 'properties = {') || ...
+            contains(mfile_contents, 'properties= {') || ...
+            contains(mfile_contents, 'properties ={') || ...
+            contains(mfile_contents, 'properties={'))
+            noutputs = nargout(strcat(path_to_group, matrix_name));
+            temp = {};
+            [temp{1:noutputs-1},P] = handle(matrix_name);
         end
     end
+    % Get other properties from the entry in the properties.m file.
+    if (isfile(strcat(path_to_group, 'am_properties.m')))
+        temp = handle('am_properties');
+        if (ismember(matrix_name, temp(:, 1)))
+            temp = temp{strcmp(matrix_name, temp(:, 1)), 2};
+            P = [P, temp(~ismember(temp, P))];
+        end
+    end
+    P = P.';
 end
 
 % Get properties of a specified array of matrices in a cell array of
@@ -470,36 +551,18 @@ function properties = scan_properties(matrix_IDs, supported_properties, root_pat
     end
 end
 
-% Fetch the properties of a specified matrix.
-function [P, temp] = get_properties(matrix_ID, root_path)
+% Generate a specified matrix with the given parameters, if any.
+function varargout = generate_matrix(matrix_ID, varargin)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
-    path_to_group = [root_path, '/', group_name, '/private/'];
     matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
     handle = str2func(strcat('anymatrix_', group_name));
-    P = {};
-    % Get properties from the M-file of the matrix.
-    mfile_path = strcat(path_to_group, matrix_name, '.m');
-    if isfile(mfile_path)
-        mfile_contents = fileread(mfile_path);
-        if (contains(mfile_contents, 'properties = {') || ...
-            contains(mfile_contents, 'properties= {') || ...
-            contains(mfile_contents, 'properties ={') || ...
-            contains(mfile_contents, 'properties={'))
-            noutputs = nargout(strcat(path_to_group, matrix_name));
-            temp = {};
-            [temp{1:noutputs-1},P] = handle(matrix_name);
-        end
+    if (~isempty(varargin))
+        [varargout{1:max(1,nargout)}] = handle(matrix_name, ...
+            varargin{1:length(varargin)});
+    else
+        [varargout{1:max(1,nargout)}] = handle(matrix_name);
     end
-    % Get other properties from the entry in the properties.m file.
-    if (isfile(strcat(path_to_group, 'am_properties.m')))
-        temp = handle('am_properties');
-        if (ismember(matrix_name, temp(:, 1)))
-            temp = temp{strcmp(matrix_name, temp(:, 1)), 2};
-            P = [P, temp(~ismember(temp, P))];
-        end
-    end
-    P = P.';
 end
 
 % Display help info of a specified matrix.
@@ -516,6 +579,29 @@ function show_matrix_help(matrix_ID)
     end
 end
 
+% Look for a pattern inside all matrix help comments in the collection.
+function found_IDs = lookfor_term(term, matrix_IDs, root_path)
+    found_IDs = {};
+    for ID_cell = matrix_IDs.'
+        matrix_ID = ID_cell{1};
+        slashloc = find(matrix_ID == '/');
+        group_name = matrix_ID(1:slashloc-1);
+        matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
+        path_to_mat = [root_path, '/', group_name, '/private/', ...
+            matrix_name];
+        if strcmp('gallery', group_name)
+            H = help(strcat('private/', matrix_name));
+        elseif strcmp('matlab', group_name)
+            H = help(matrix_name);
+        else
+            H = help(path_to_mat);
+        end
+        if contains(H, term, 'IgnoreCase', true)
+            found_IDs = [found_IDs; matrix_ID];  %#ok<AGROW>
+        end
+    end
+end
+
 % Display info in the Contents.m of a specified group.
 function show_contents(group_ID, root_path)
      if isfile(strcat(root_path, '/', group_ID, '/private/Contents.m'))
@@ -523,105 +609,6 @@ function show_contents(group_ID, root_path)
      else
          error('No Contents.m exists for that group.')
      end  
-end
-
-% Check if a folder in anymatrix root directory is a group folder.
-% Group directories have one private/ directory and one file named
-% anymatrix_<dir_name>.m where <dir_name> is the directory name.
-function out = is_group_dir(directory, root_path)
-    % Check dir is not current or previous directories '.' and '..',
-    % and check dir has two files additionally to '.' and '..'.
-    if (any(strcmp(directory, {'.', '..'})) || ...
-            (length(dir(strcat(root_path, '/', directory)))) ~= 4)
-        out = false;
-    else
-        % Check dir has a 'private' directory and a file
-        % anymatrix_<dir_name>.
-        out = ~(isempty(dir(strcat(root_path, '/', directory, ...
-                                   '/private/'))) || ...
-                isempty(dir(strcat(root_path, '/', directory, ...
-                                   '/anymatrix_', directory, '.m'))));
-    end
-end
-
-% Run a testsuite of a particular group.
-function run_group_tests(group_ID, root_path)
-    handle = str2func(strcat('anymatrix_', group_ID));
-    test_func = 'test_run';
-    if (isfile(strcat(root_path, '/', group_ID, '/private/', ...
-                      test_func, '.m')))
-        handle(test_func);
-    else
-        fprintf('Group %s does not contain any tests. \n', group_ID);
-    end
-end
-
-% Run function if present.
-function run_function_if_present(new_folder, function_name)
-    current_folder = cd(new_folder);
-    if exist([function_name '.m'], 'file')
-        fprintf('Running function %s()...', function_name);
-        feval(function_name);
-        fprintf('done.\n');
-    end
-    cd(current_folder);
-end
-
-% Generate a specified matrix with the given parameters, if any.
-function varargout = generate_matrix(matrix_ID, varargin)
-    slashloc = find(matrix_ID == '/');
-    group_name = matrix_ID(1:slashloc-1);
-    matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
-    handle = str2func(strcat('anymatrix_', group_name));
-    if (~isempty(varargin))
-        [varargout{1:max(1,nargout)}] = handle(matrix_name, ...
-            varargin{1:length(varargin)});
-    else
-        [varargout{1:max(1,nargout)}] = handle(matrix_name);
-    end
-end
-
-% Scan the sets folder and obtain the set IDs.
-function set_IDs = scan_sets( root_path )
-    set_IDs = {dir(strcat(root_path, '/sets/*.txt')).name};
-    
-    % Remove '.txt' extensions from the IDs.
-    for k = 1:length(set_IDs)
-        dotloc = find(set_IDs{k} == '.');
-        set_IDs{k} = set_IDs{k}(1:dotloc(1)-1);
-    end
-    set_IDs = set_IDs.';
-end
-
-% Scan the root folder and obtain the group IDs.
-function IDs = scan_groups( root_path )
-    contents = dir(root_path);
-    IDs = {};
-    for k = 1:length(contents)
-        if contents(k).isdir && is_group_dir(contents(k).name, root_path)
-            IDs{end+1} = contents(k).name;  %#ok<AGROW>
-            addpath(strcat(root_path, '/', contents(k).name));
-        end
-    end
-    IDs = IDs.';
-end
-
-% Top level function for scanning the files.
-function [set_IDs, groups, matrix_IDs, properties] = scan_filesystem(supported_properties, root_path)
-    set_IDs = scan_sets(root_path);
-    groups = scan_groups(root_path);
-    matrix_IDs = scan_matrices(groups, root_path);
-    properties = scan_properties(matrix_IDs, supported_properties, root_path);
-end
-
-% Try to run function setup() if current group has one.
-function run_setup_function(group_private_folder)
-    run_function_if_present(group_private_folder, 'setup');
-end
-
-% Try to run function update() if current group has one.
-function run_update_function(group_private_folder)
-    run_function_if_present(group_private_folder, 'update');
 end
 
 % Create or update a specified git group.
@@ -679,6 +666,18 @@ function [set_IDs, group_IDs, matrix_IDs, properties] = update_git_group(group_I
     end
     % Rescan the anymatrix file system.
     [set_IDs, group_IDs, matrix_IDs, properties] = scan_filesystem(supported_properties, root_path);
+end
+
+% Run a testsuite of a particular group.
+function run_group_tests(group_ID, root_path)
+    handle = str2func(strcat('anymatrix_', group_ID));
+    test_func = 'test_run';
+    if (isfile(strcat(root_path, '/', group_ID, '/private/', ...
+                      test_func, '.m')))
+        handle(test_func);
+    else
+        fprintf('Group %s does not contain any tests. \n', group_ID);
+    end
 end
 
 %#ok<*MCHLP>
