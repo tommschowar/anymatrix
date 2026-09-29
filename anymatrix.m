@@ -29,8 +29,6 @@ function varargout = anymatrix(varargin)
 %   G = ANYMATRIX('groups') - return the available groups.
 %   M = ANYMATRIX('groups', group_name) - return matrix IDs that belong
 %       to the group with a specified name group_name.
-%   ANYMATRIX('groups', group_name, repository) - clone or update
-%       an anymatrix group stored in the specified repository.
 %   ANYMATRIX('help', matrix_id) - list the help for a specified
 %       matrix (anymatrix(matrix_id, 'help') also accepted).
 %   M = ANYMATRIX('lookfor', pattern) - returns a list of matrix IDs
@@ -115,10 +113,10 @@ function varargout = anymatrix(varargin)
                         characterListPattern("-"));
     
     % Convert inputs to char arrays if supplied as strings.
-    if nargin > 0 && isstring(varargin{1})
+    if numel( varargin ) > 0 && isstring(varargin{1})
         varargin{1} = char(varargin{1});
     end
-    if nargin > 1 && isstring(varargin{2})
+    if numel( varargin ) > 1 && isstring(varargin{2})
         varargin{2} = char(varargin{2});
     end
     
@@ -138,7 +136,7 @@ function varargout = anymatrix(varargin)
     [set_IDs, group_IDs, matrix_IDs, properties] = ...
             scan_filesystem( supported_properties, root_path );
     
-    if nargin == 0
+    if numel( varargin ) == 0
         help('anymatrix.m');
         return;
     elseif ~ischar(varargin{1})
@@ -148,7 +146,7 @@ function varargout = anymatrix(varargin)
     % Parse the arguments passed to anymatrix.
     command = varargin{1};
     arg = [];
-    if nargin >= 2
+    if numel( varargin ) >= 2
         arg = varargin{2};
         if ischar(varargin{2}) && any(startsWith({ ...
                 'properties', ...
@@ -166,7 +164,7 @@ function varargout = anymatrix(varargin)
     % Hyphens -> underscores in matrix IDs.
     command = strrep(command, '-', '_');
     
-    capture_some_common_errors( nargin, arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin{:} )
+    capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin{:} )
 
     
     % Execute the specified command.
@@ -177,9 +175,9 @@ function varargout = anymatrix(varargin)
         show_contents(arg, root_path);
 
     elseif startsWith('groups', command)
-        if nargin == 1
+        if numel( varargin ) == 1  %#ok<ISCL>
             varargout{1} = group_IDs;
-        elseif nargin == 2
+        elseif numel( varargin ) == 2
             varargout{1} = matrix_IDs(contains(matrix_IDs, ...
                                                strcat(arg, '/')));
         else
@@ -187,7 +185,7 @@ function varargout = anymatrix(varargin)
         end
 
     elseif startsWith('help', command)
-        if nargin == 1
+        if numel( varargin ) == 1  %#ok<ISCL>
             help anymatrix;
         else
             show_matrix_help(arg);
@@ -197,7 +195,7 @@ function varargout = anymatrix(varargin)
         varargout{1} = lookfor_term(arg, matrix_IDs, root_path);
 
     elseif startsWith('properties', command)
-        if nargin == 1
+        if numel( varargin ) == 1  %#ok<ISCL>
             [~, I] = sort(lower(supported_properties));
             varargout{1} = supported_properties(I);
         elseif matches(arg, matrix_ID_pat)
@@ -213,7 +211,7 @@ function varargout = anymatrix(varargin)
         return;
 
     elseif startsWith('sets', command)
-        if nargin == 1
+        if numel( varargin ) == 1  %#ok<ISCL>
             varargout{1} = set_IDs;
         else
             S = readcell( ...
@@ -236,7 +234,7 @@ function varargout = anymatrix(varargin)
         end
 
     elseif startsWith('test', command)
-        if nargin == 1
+        if numel( varargin ) == 1  %#ok<ISCL>
             for group_id = group_IDs.'
                 run_group_tests(group_id{1}, root_path);
             end
@@ -245,14 +243,14 @@ function varargout = anymatrix(varargin)
         end
 
     else
-        [varargout{1:nargout}] = generate_matrix(command, varargin{2:nargin});
+        [varargout{1:nargout}] = generate_matrix(command, varargin{2:end});
 
     end
 
 end
 
 % Capture some common errors in the arguments.
-function capture_some_common_errors( numargin, arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin)
+function capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin)
     if matches(command, matrix_ID_pat)
         if ~ismember(command, matrix_IDs)
             error('Specified matrix ID was not found.');
@@ -262,11 +260,11 @@ function capture_some_common_errors( numargin, arg, command, set_IDs, group_IDs,
                 'sets', 'all', 'scan', 'help', 'test', 'contents', ...
                 'lookfor'}, command))
             error('Anymatrix command was not recognized.');
-    elseif numargin == 1
+    elseif numel( varargin ) == 1  %#ok<ISCL>
         if any(startsWith({'lookfor', 'contents'}, command))
             error('Please specify one more argument.');
         end
-    elseif numargin == 2
+    elseif numel( varargin ) == 2
         if ~ischar(arg)
             error('This anymatrix command requires string arguments.');
         elseif startsWith({'help'}, command) || ...
@@ -284,7 +282,7 @@ function capture_some_common_errors( numargin, arg, command, set_IDs, group_IDs,
                 error('ID of the specified set was not found.');
             end
         end
-    elseif (numargin > 3) || ((numargin == 3) && ...
+    elseif (numel( varargin ) > 3) || ((numel( varargin ) == 3) && ...
             ~startsWith('groups', varargin{1}))
         error('Anymatrix command was not recognized (too many inputs).');
     end
