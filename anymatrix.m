@@ -100,9 +100,7 @@ function varargout = anymatrix(varargin)
 %   https://doi.org/10.1007/s11075-007-9136-9
 
     % Check that MATLAB 2020b or higher is present.
-    if verLessThan('matlab','9.9')  %#ok<VERLESSMATLAB>
-        error('MATLAB 2020b or newer is required.')
-    end
+    assert(~verLessThan('matlab','9.9'), 'MATLAB 2020b or newer is required.');  %#ok<VERLESSMATLAB>
     
     % Matrix ID pattern
     matrix_ID_pat = ...
@@ -139,9 +137,9 @@ function varargout = anymatrix(varargin)
     if numel( varargin ) == 0
         help('anymatrix.m');
         return;
-    elseif ~ischar(varargin{1})
-        error('Anymatrix command was not recognized');
     end
+
+    assert(ischar(varargin{1}), 'Anymatrix command was not recognized');
     
     % Parse the arguments passed to anymatrix.
     command = varargin{1};
@@ -181,7 +179,7 @@ function varargout = anymatrix(varargin)
             varargout{1} = matrix_IDs(contains(matrix_IDs, ...
                                                strcat(arg, '/')));
         else
-            error( 'anymatrix:git', 'Git functionaly got removed.' );
+            error('anymatrix:git', 'Git functionaly got removed.' );
         end
 
     elseif startsWith('help', command)
@@ -252,35 +250,28 @@ end
 % Capture some common errors in the arguments.
 function capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin)
     if matches(command, matrix_ID_pat)
-        if ~ismember(command, matrix_IDs)
-            error('Specified matrix ID was not found.');
-        end
+        assert(ismember(command, matrix_IDs), 'Specified matrix ID was not found.');
     elseif ~any(startsWith({ ...
                 'properties', 'groups', ...
                 'sets', 'all', 'scan', 'help', 'test', 'contents', ...
                 'lookfor'}, command))
             error('Anymatrix command was not recognized.');
+
     elseif numel( varargin ) == 1  %#ok<ISCL>
-        if any(startsWith({'lookfor', 'contents'}, command))
-            error('Please specify one more argument.');
-        end
+        assert(~any(startsWith({'lookfor', 'contents'}, command)), 'Please specify one more argument.');
+
     elseif numel( varargin ) == 2
-        if ~ischar(arg)
-            error('This anymatrix command requires string arguments.');
-        elseif startsWith({'help'}, command) || ...
+        assert( ischar(arg), 'This anymatrix command requires string arguments.');
+        if startsWith({'help'}, command) || ...
             (startsWith('properties', command) && ...
              matches(arg, matrix_ID_pat))
-            if ~ismember(arg, matrix_IDs)
-                error('Specified matrix ID was not found.');
-            end
+            assert(ismember(arg, matrix_IDs), 'Specified matrix ID was not found.');
+            
         elseif any(startsWith({'groups', 'contents', 'test'}, command))
-            if ~ismember(arg, group_IDs)
-                error('The specified group ID was not found.');
-            end
+            assert(ismember(arg, group_IDs), 'The specified group ID was not found.');
+
         elseif startsWith('sets', command)
-            if ~ismember(arg, set_IDs)
-                error('ID of the specified set was not found.');
-            end
+            assert(ismember(arg, set_IDs),'ID of the specified set was not found.');
         end
     elseif (numel( varargin ) > 3) || ((numel( varargin ) == 3) && ...
             ~startsWith('groups', varargin{1}))
@@ -395,11 +386,8 @@ end
 
 % Display info in the Contents.m of a specified group.
 function show_contents(group_ID, root_path)
-     if isfile(strcat(root_path, '/', group_ID, '/private/Contents.m'))
-         type(strcat(root_path, '/', group_ID, '/private/Contents.m'))
-     else
-         error('No Contents.m exists for that group.')
-     end  
+    assert(isfile(strcat(root_path, '/', group_ID, '/private/Contents.m')), 'No Contents.m exists for that group.');
+    type(strcat(root_path, '/', group_ID, '/private/Contents.m'))
 end
 
 % Run a testsuite of a particular group.
