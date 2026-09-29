@@ -99,25 +99,6 @@ function varargout = anymatrix(varargin)
 %   Numer. Algorithms 46(2), 189--194 (2007).
 %   https://doi.org/10.1007/s11075-007-9136-9
 
-    % Check that MATLAB 2020b or higher is present.
-    assert(~verLessThan('matlab','9.9'), 'MATLAB 2020b or newer is required.');  %#ok<VERLESSMATLAB>
-    
-    % Matrix ID pattern
-    matrix_ID_pat = ...
-        asManyOfPattern(alphanumericsPattern | characterListPattern("_") | ...
-                        characterListPattern("-")) + ...
-        '/' + ...
-        asManyOfPattern(alphanumericsPattern | characterListPattern("_") | ...
-                        characterListPattern("-"));
-    
-    % Convert inputs to char arrays if supplied as strings.
-    if numel( varargin ) > 0 && isstring(varargin{1})
-        varargin{1} = char(varargin{1});
-    end
-    if numel( varargin ) > 1 && isstring(varargin{2})
-        varargin{2} = char(varargin{2});
-    end
-    
     persistent supported_properties
     
     % Get the directory containing the anymatrix.m file.
@@ -132,16 +113,107 @@ function varargout = anymatrix(varargin)
         supported_properties = prop_list();
     end
     [set_IDs, group_IDs, matrix_IDs, properties] = ...
-            scan_filesystem( supported_properties, root_path );
+        scan_filesystem( supported_properties, root_path );
     
     if numel( varargin ) == 0
         help('anymatrix.m');
         return;
     end
-
-    assert(ischar(varargin{1}), 'Anymatrix command was not recognized');
     
-    % Parse the arguments passed to anymatrix.
+    [arg, command, varargin] = parse_input( varargin{:} );
+
+    matrix_ID_pat = ...
+        asManyOfPattern(alphanumericsPattern | characterListPattern("_") | ...
+                        characterListPattern("-")) + ...
+        '/' + ...
+        asManyOfPattern(alphanumericsPattern | characterListPattern("_") | ...
+                        characterListPattern("-"));
+    
+    capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin{:} )
+
+    % Execute the specified command.
+    if startsWith('all', command)
+        varargout{1} = matrix_IDs;
+
+    elseif startsWith('contents', command)
+        show_contents(arg, root_path);
+
+    elseif startsWith('groups', command)
+        if isempty( arg )
+            varargout{1} = group_IDs;
+        else
+            varargout{1} = ...
+                matrix_IDs(contains(matrix_IDs, strcat(arg, '/')));
+        end
+
+    elseif startsWith('help', command)
+        if isempty( arg )
+            help anymatrix;
+        else
+            show_matrix_help(arg);
+        end
+
+    elseif startsWith('lookfor', command)
+        varargout{1} = lookfor_term(arg, matrix_IDs, root_path);
+
+    elseif startsWith('properties', command)
+        if isempty( arg )
+            [~, I] = sort(lower(supported_properties));
+            varargout{1} = supported_properties(I);
+        elseif matches(arg, matrix_ID_pat)
+            [~, I] = sort(lower(properties{strcmp(matrix_IDs, arg)}));
+            varargout{1} = properties{strcmp(matrix_IDs, arg)}(I);
+        else
+            varargout{1} = search_by_properties(arg, matrix_IDs, properties);
+        end
+
+    elseif startsWith('scan', command)
+        supported_properties = prop_list();
+        scan_filesystem(supported_properties, root_path, true);
+        return;
+
+    elseif startsWith('sets', command)
+        if isempty( arg )
+            varargout{1} = set_IDs;
+        else
+            S = readcell( ...
+                    strcat(root_path, '/sets/', arg, '.txt'), ...
+                    'Delimiter', ':', 'CommentStyle', '%', ...
+                    'Whitespace', ' \n');
+            varargout{1} = S;
+            out_ind = 2;
+            % Generate matrices using parameters specified in the set.
+            for index = 1:length(S)
+                if ismissing(S{index, 2})
+                    varargout{out_ind} = eval(strcat('generate_matrix(''', ...
+                        S{index, 1}, ''')'));
+                else
+                    varargout{out_ind} = eval(strcat('generate_matrix(''', ...
+                        S{index, 1}, ''',', num2str(S{index, 2}), ')'));
+                end
+                out_ind = out_ind + 1;
+            end
+        end
+
+    elseif startsWith('test', command)
+        if isempty( arg )
+            for group_id = group_IDs.'
+                run_group_tests(group_id{1}, root_path);
+            end
+        else
+            run_group_tests(arg, root_path);
+        end
+
+    else
+        [varargout{1:nargout}] = generate_matrix(command, varargin{2:end});
+
+    end
+
+end
+
+function [arg, command, varargin] = parse_input( varargin )
+    varargin = string_to_char( varargin{:} );
+    assert(ischar(varargin{1}), 'Anymatrix command was not recognized');
     command = varargin{1};
     arg = [];
     if numel( varargin ) >= 2
@@ -161,103 +233,31 @@ function varargout = anymatrix(varargin)
     end
     % Hyphens -> underscores in matrix IDs.
     command = strrep(command, '-', '_');
-    
-    capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin{:} )
+end
 
-    
-    % Execute the specified command.
-    if startsWith('all', command)
-        varargout{1} = matrix_IDs;
-
-    elseif startsWith('contents', command)
-        show_contents(arg, root_path);
-
-    elseif startsWith('groups', command)
-        if numel( varargin ) == 1  %#ok<ISCL>
-            varargout{1} = group_IDs;
-        elseif numel( varargin ) == 2
-            varargout{1} = matrix_IDs(contains(matrix_IDs, ...
-                                               strcat(arg, '/')));
-        else
-            error('anymatrix:git', 'Git functionaly got removed.' );
+function varargin = string_to_char( varargin )
+    for i = 1:numel(varargin)
+        if isstring(varargin{i})
+            varargin{i} = char(varargin{i});
         end
-
-    elseif startsWith('help', command)
-        if numel( varargin ) == 1  %#ok<ISCL>
-            help anymatrix;
-        else
-            show_matrix_help(arg);
-        end
-
-    elseif startsWith('lookfor', command)
-        varargout{1} = lookfor_term(arg, matrix_IDs, root_path);
-
-    elseif startsWith('properties', command)
-        if numel( varargin ) == 1  %#ok<ISCL>
-            [~, I] = sort(lower(supported_properties));
-            varargout{1} = supported_properties(I);
-        elseif matches(arg, matrix_ID_pat)
-            [~, I] = sort(lower(properties{strcmp(matrix_IDs, arg)}));
-            varargout{1} = properties{strcmp(matrix_IDs, arg)}(I);
-        else
-            varargout{1} = search_by_properties(arg, matrix_IDs, properties);
-        end
-
-    elseif startsWith('scan', command)
-        supported_properties = prop_list();
-        scan_filesystem(supported_properties, root_path, true);
-        return;
-
-    elseif startsWith('sets', command)
-        if numel( varargin ) == 1  %#ok<ISCL>
-            varargout{1} = set_IDs;
-        else
-            S = readcell( ...
-                strcat(root_path, '/sets/', arg, '.txt'), ...
-                'Delimiter', ':', 'CommentStyle', '%', ...
-                'Whitespace', ' \n');
-            varargout{1} = S;
-            out_ind = 2;
-            % Generate matrices using parameters specified in the set.
-            for index = 1:length(S)
-                if ismissing(S{index, 2})
-                    varargout{out_ind} = eval(strcat('generate_matrix(''', ...
-                        S{index, 1}, ''')'));
-                else
-                    varargout{out_ind} = eval(strcat('generate_matrix(''', ...
-                        S{index, 1}, ''',', num2str(S{index, 2}), ')'));
-                end
-                out_ind = out_ind + 1;
-            end
-        end
-
-    elseif startsWith('test', command)
-        if numel( varargin ) == 1  %#ok<ISCL>
-            for group_id = group_IDs.'
-                run_group_tests(group_id{1}, root_path);
-            end
-        else
-            run_group_tests(arg, root_path);
-        end
-
-    else
-        [varargout{1:nargout}] = generate_matrix(command, varargin{2:end});
-
     end
-
 end
 
 % Capture some common errors in the arguments.
 function capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin)
+    % Check that MATLAB 2020b or higher is present.
+    assert(~verLessThan('matlab','9.9'), 'MATLAB 2020b or newer is required.');  %#ok<VERLESSMATLAB>
+
     if matches(command, matrix_ID_pat)
         assert(ismember(command, matrix_IDs), 'Specified matrix ID was not found.');
+
     elseif ~any(startsWith({ ...
                 'properties', 'groups', ...
                 'sets', 'all', 'scan', 'help', 'test', 'contents', ...
                 'lookfor'}, command))
             error('Anymatrix command was not recognized.');
 
-    elseif numel( varargin ) == 1  %#ok<ISCL>
+    elseif isempty(arg)
         assert(~any(startsWith({'lookfor', 'contents'}, command)), 'Please specify one more argument.');
 
     elseif numel( varargin ) == 2
@@ -273,8 +273,8 @@ function capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_ID
         elseif startsWith('sets', command)
             assert(ismember(arg, set_IDs),'ID of the specified set was not found.');
         end
-    elseif (numel( varargin ) > 3) || ((numel( varargin ) == 3) && ...
-            ~startsWith('groups', varargin{1}))
+
+    elseif numel( varargin ) >= 3
         error('Anymatrix command was not recognized (too many inputs).');
     end
 end
