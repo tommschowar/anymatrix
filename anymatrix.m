@@ -118,10 +118,10 @@ function varargout = anymatrix(varargin)
     
     % Convert inputs to char arrays if supplied as strings.
     if (nargin > 0) && isstring(varargin{1})
-        varargin{1} = convertStringsToChars(varargin{1});
+        varargin{1} = char(varargin{1});
     end
     if (nargin > 1) && isstring(varargin{2})
-        varargin{2} = convertStringsToChars(varargin{2});
+        varargin{2} = char(varargin{2});
     end
     
     % Flag used for performing the first scan of the file structure.
@@ -160,7 +160,8 @@ function varargout = anymatrix(varargin)
     command = varargin{1};
     if (nargin >= 2)
         arg = varargin{2};
-        if ischar(varargin{2}) && any(startsWith({'properties', ...
+        if ischar(varargin{2}) && any(startsWith({ ...
+                'properties', ...
                 'groups', 'sets', 'all', 'scan', 'help', 'test', ...
                 'lookfor', 'contents'}, varargin{2}))
             command = varargin{2};
@@ -224,7 +225,8 @@ function varargout = anymatrix(varargin)
             varargout{1} = matrix_IDs(contains(matrix_IDs, ...
                                                strcat(arg, '/')));
         else
-            [set_IDs, group_IDs, matrix_IDs, properties] = update_git_group(arg, varargin{3}, root_path);
+            [set_IDs, group_IDs, matrix_IDs, properties] = ...
+                update_git_group(arg, varargin{3}, root_path);
         end
     elseif startsWith('help', command)
         if (nargin == 1)
@@ -246,7 +248,8 @@ function varargout = anymatrix(varargin)
         end
     elseif startsWith('scan', command)
         supported_properties = prop_list();
-        [set_IDs, group_IDs, matrix_IDs, properties] = scan_filesystem(supported_properties, root_path);
+        [set_IDs, group_IDs, matrix_IDs, properties] = ...
+            scan_filesystem(supported_properties, root_path);
         disp('Anymatrix scanning done.');
     elseif startsWith('sets', command)
         if (nargin == 1)
@@ -334,7 +337,7 @@ function IDs = search_by_properties(expression, matrix_IDs, properties)
         % Test if the expression is true for this matrix
         % and add it's ID.
         if eval(new_expression)
-            IDs = [IDs; matrix_IDs{k}];
+            IDs = [IDs; matrix_IDs{k}];  %#ok<AGROW>
         end
     end
 end
@@ -357,7 +360,7 @@ function found_IDs = lookfor_term(term, matrix_IDs, root_path)
             H = help(path_to_mat);
         end
         if contains(H, term, 'IgnoreCase', true)
-            found_IDs = [found_IDs; matrix_ID];
+            found_IDs = [found_IDs; matrix_ID];  %#ok<AGROW>
         end
     end
 end
@@ -375,8 +378,10 @@ function matrix_IDs = scan_matrices(groups, root_path)
                 contains(mfile_contents, 'properties= {') || ...
                 contains(mfile_contents, 'properties ={') || ...
                 contains(mfile_contents, 'properties={'))
-                matrix_IDs = [matrix_IDs; [group{1}, '/', ...
-                    extractBefore(mfile.name, '.m')]];
+                matrix_IDs = [
+                    matrix_IDs; 
+                    [group{1}, '/', extractBefore(mfile.name, '.m')]
+                    ];  %#ok<AGROW>
             end
         end
         
@@ -386,7 +391,7 @@ function matrix_IDs = scan_matrices(groups, root_path)
             handle = str2func(strcat('anymatrix_', group{1}));
             P = handle('am_properties');
             moreIDs = strcat(group{1}, '/', P(:,1));
-            matrix_IDs = [matrix_IDs; moreIDs(~ismember(moreIDs, matrix_IDs))];
+            matrix_IDs = [matrix_IDs; moreIDs(~ismember(moreIDs, matrix_IDs))];  %#ok<AGROW>
         end
     end
 end
@@ -408,17 +413,17 @@ function properties = scan_properties(matrix_IDs, supported_properties, root_pat
 
     properties = {};
     for matrix_ID = matrix_IDs.'
-        current_properties = get_properties(matrix_ID{1}, root_path);
+        [current_properties, temp] = get_properties(matrix_ID{1}, root_path);
         if size(current_properties, 2) > 1
             current_properties = current_properties';
         end
-        properties = [properties; {current_properties}];
+        properties = [properties; {current_properties}];  %#ok<AGROW>
     end
 
     % Add property 'built-in' for the built-in matrices.
     for i = 1:length(matrix_IDs)
        if any(startsWith(matrix_IDs{i}, built_in_groups))
-           properties{i} = [properties{i}; 'built-in'];
+           properties{i} = [properties{i}; 'built-in'];  %#ok<AGROW>
        end
     end
 
@@ -433,7 +438,7 @@ function properties = scan_properties(matrix_IDs, supported_properties, root_pat
                     strrep(lower(properties{i}), '-', ' '))) && ...
                     ~ismember(strrep(lower(I{j, 1}), '-', ' '), ...
                     strrep(lower(properties{i}), '-', ' '))
-                properties{i} = [properties{i}; I{j, 1}];
+                properties{i} = [properties{i}; I{j, 1}];  %#ok<AGROW>
             end
         end
         j = 1;
@@ -444,7 +449,7 @@ function properties = scan_properties(matrix_IDs, supported_properties, root_pat
                             strrep(lower(M{j, 2}), '-', ' '))) && ...
                 ~ismember(strrep(lower(M{j, 1}), '-', ' '), ...
                           strrep(lower(properties{i}), '-', ' '))
-                properties{i} = [properties{i}; M{j, 1}];
+                properties{i} = [properties{i}; M{j, 1}];  %#ok<AGROW>
                 j=1;
             end
             j = j+1;
@@ -466,7 +471,7 @@ function properties = scan_properties(matrix_IDs, supported_properties, root_pat
 end
 
 % Fetch the properties of a specified matrix.
-function P = get_properties(matrix_ID, root_path)
+function [P, temp] = get_properties(matrix_ID, root_path)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
     path_to_group = [root_path, '/', group_name, '/private/'];
@@ -594,7 +599,7 @@ function IDs = scan_groups( root_path )
     IDs = {};
     for k = 1:length(contents)
         if contents(k).isdir && is_group_dir(contents(k).name, root_path)
-            IDs{end+1} = contents(k).name;
+            IDs{end+1} = contents(k).name;  %#ok<AGROW>
             addpath(strcat(root_path, '/', contents(k).name));
         end
     end
