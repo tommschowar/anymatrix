@@ -1,19 +1,24 @@
 % Top level function for scanning the files.
-function [set_IDs, group_IDs, matrix_IDs, properties] = scan_filesystem( supported_properties, root_path, rescan )
+function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = scan_filesystem( root_path, rescan )
     persistent set_IDs_
     persistent group_IDs_
     persistent matrix_IDs_
     persistent properties_
+    persistent supported_properties_
 
-    if nargin <= 2 || isempty( rescan )
+    if nargin <= 1 || isempty( rescan )
         rescan = false;
     end
 
+    
+
     if isempty(set_IDs_) || rescan
+        supported_properties_ = prop_list();
         set_IDs_ = scan_sets(root_path);
         group_IDs_ = scan_groups(root_path);
         matrix_IDs_ = scan_matrices(group_IDs_, root_path);
-        properties_ = scan_properties(matrix_IDs_, supported_properties, root_path);
+        properties_ = scan_properties(matrix_IDs_, supported_properties_, root_path);
+        
 
         disp('Anymatrix scanning done.');
     end
@@ -22,6 +27,7 @@ function [set_IDs, group_IDs, matrix_IDs, properties] = scan_filesystem( support
     group_IDs = group_IDs_;
     matrix_IDs = matrix_IDs_;
     properties = properties_;
+    supported_properties = supported_properties_;
 end
 
 % Scan the sets folder and obtain the set IDs.

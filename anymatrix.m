@@ -29,6 +29,8 @@ function varargout = anymatrix(varargin)
 %   G = ANYMATRIX('groups') - return the available groups.
 %   M = ANYMATRIX('groups', group_name) - return matrix IDs that belong
 %       to the group with a specified name group_name.
+%   ANYMATRIX('groups', group_name, repository) - clone or update
+%       an anymatrix group stored in the specified repository.
 %   ANYMATRIX('help', matrix_id) - list the help for a specified
 %       matrix (anymatrix(matrix_id, 'help') also accepted).
 %   M = ANYMATRIX('lookfor', pattern) - returns a list of matrix IDs
@@ -99,21 +101,21 @@ function varargout = anymatrix(varargin)
 %   Numer. Algorithms 46(2), 189--194 (2007).
 %   https://doi.org/10.1007/s11075-007-9136-9
 
-    persistent supported_properties
-    
+    persistent added_to_path    
     % Get the directory containing the anymatrix.m file.
-    root_path = fileparts(strcat(mfilename('fullpath'), '.m'));
+    root_path = fileparts([mfilename('fullpath'), '.m']);
     
     % Scan the file structure of the collection to obtain matrix, group and
     % set IDs, if it hasn't been scanned yet.
-    if isempty(supported_properties)
+    if isempty(added_to_path)
+        added_to_path = true;
         % Add anymatrix/sets and anymatrix/testing to the search path.
-        addpath(strcat(root_path, '/sets'));
-        addpath(strcat(root_path, '/testing'));
-        supported_properties = prop_list();
+        addpath(root_path);
+        addpath([root_path, '/sets']);
+        addpath([root_path, '/testing']);
     end
-    [set_IDs, group_IDs, matrix_IDs, properties] = ...
-        scan_filesystem( supported_properties, root_path );
+    [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = ...
+        scan_filesystem( root_path );
     
     if numel( varargin ) == 0
         help('anymatrix.m');
@@ -141,9 +143,11 @@ function varargout = anymatrix(varargin)
     elseif startsWith('groups', command)
         if isempty( arg )
             varargout{1} = group_IDs;
-        else
+        elseif numel( varargin ) == 2
             varargout{1} = ...
-                matrix_IDs(contains(matrix_IDs, strcat(arg, '/')));
+                matrix_IDs(contains(matrix_IDs, [arg, '/']));
+        else
+            update_git_group(arg, varargin{3}, root_path);
         end
 
     elseif startsWith('help', command)
@@ -168,8 +172,7 @@ function varargout = anymatrix(varargin)
         end
 
     elseif startsWith('scan', command)
-        supported_properties = prop_list();
-        scan_filesystem(supported_properties, root_path, true);
+        scan_filesystem(root_path, true);
         return;
 
     elseif startsWith('sets', command)
@@ -177,7 +180,7 @@ function varargout = anymatrix(varargin)
             varargout{1} = set_IDs;
         else
             S = readcell( ...
-                    strcat(root_path, '/sets/', arg, '.txt'), ...
+                    [root_path, '/sets/', arg, '.txt'], ...
                     'Delimiter', ':', 'CommentStyle', '%', ...
                     'Whitespace', ' \n');
             varargout{1} = S;
@@ -185,11 +188,11 @@ function varargout = anymatrix(varargin)
             % Generate matrices using parameters specified in the set.
             for index = 1:length(S)
                 if ismissing(S{index, 2})
-                    varargout{out_ind} = eval(strcat('generate_matrix(''', ...
-                        S{index, 1}, ''')'));
+                    varargout{out_ind} = eval(['generate_matrix(''', ...
+                        S{index, 1}, ''')']);
                 else
-                    varargout{out_ind} = eval(strcat('generate_matrix(''', ...
-                        S{index, 1}, ''',', num2str(S{index, 2}), ')'));
+                    varargout{out_ind} = eval(['generate_matrix(''', ...
+                        S{index, 1}, ''',', num2str(S{index, 2}), ')']);
                 end
                 out_ind = out_ind + 1;
             end
@@ -273,9 +276,12 @@ function capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_ID
         elseif startsWith('sets', command)
             assert(ismember(arg, set_IDs),'ID of the specified set was not found.');
         end
-
-    elseif numel( varargin ) >= 3
+        
+    elseif (numel(varargin) > 3 || ... 
+            numel(varargin) == 3 && ~startsWith('groups', varargin{1}) ...
+           )
         error('Anymatrix command was not recognized (too many inputs).');
+
     end
 end
 
@@ -304,21 +310,21 @@ function IDs = search_by_properties(expression, matrix_IDs, properties)
     ind = 1;
     new_expression = '';
     for p = ex_props.'
-        mod_prop = strcat('ismember(''', ...
+        mod_prop = ['ismember(''', ...
             strrep(lower(p{1}), '-', ' '), ...
-            ''', strrep(lower(matrix_properties{1}), ''-'', '' ''))');
+            ''', strrep(lower(matrix_properties{1}), ''-'', '' ''))'];
         trunc_exp = expression(ind:end);
         % Find where the property is in the expression.
         prop_index = strfind(trunc_exp, p{1});
         % Take anything before the property and append the modified
         % version of the property.
-        new_expression = strcat(new_expression, ...
+        new_expression = [new_expression, ...
             trunc_exp(1:prop_index(1)-1), ...
-            mod_prop);
+            mod_prop];  %#ok<AGROW>
         % Move the index after the property that was replaced.
         ind = ind + prop_index(1) + length(p{1}) - 1;
     end
-    new_expression = strcat(new_expression, expression(ind:end));
+    new_expression = [new_expression, expression(ind:end)];
 
     % Find matrices whose properties satisfy the specified logical
     % expression.
@@ -338,7 +344,7 @@ function varargout = generate_matrix(matrix_ID, varargin)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
     matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
-    handle = str2func(strcat('anymatrix_', group_name));
+    handle = str2func(['anymatrix_', group_name]);
     if ~isempty(varargin)
         [varargout{1:max(1,nargout)}] = handle(matrix_name, ...
             varargin{1:length(varargin)});
@@ -353,7 +359,7 @@ function show_matrix_help(matrix_ID)
     group_name = matrix_ID(1:slashloc-1);
     matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
     if strcmp('gallery', group_name)
-        help(strcat('private/', matrix_name));
+        help(['private/', matrix_name]);
     elseif strcmp('matlab', group_name)
         help(matrix_name);
     else
@@ -372,7 +378,7 @@ function found_IDs = lookfor_term(term, matrix_IDs, root_path)
         path_to_mat = [root_path, '/', group_name, '/private/', ...
             matrix_name];
         if strcmp('gallery', group_name)
-            H = help(strcat('private/', matrix_name));
+            H = help(['private/', matrix_name]);
         elseif strcmp('matlab', group_name)
             H = help(matrix_name);
         else
@@ -386,16 +392,18 @@ end
 
 % Display info in the Contents.m of a specified group.
 function show_contents(group_ID, root_path)
-    assert(isfile(strcat(root_path, '/', group_ID, '/private/Contents.m')), 'No Contents.m exists for that group.');
-    type(strcat(root_path, '/', group_ID, '/private/Contents.m'))
+    assert(isfile([root_path, '/', group_ID, '/private/Contents.m']), 'No Contents.m exists for that group.');
+    type([root_path, '/', group_ID, '/private/Contents.m'])
 end
+
+
 
 % Run a testsuite of a particular group.
 function run_group_tests(group_ID, root_path)
-    handle = str2func(strcat('anymatrix_', group_ID));
+    handle = str2func(['anymatrix_', group_ID]);
     test_func = 'test_run';
-    if (isfile(strcat(root_path, '/', group_ID, '/private/', ...
-                      test_func, '.m')))
+    if (isfile([root_path, '/', group_ID, '/private/', ...
+                      test_func, '.m']))
         handle(test_func);
     else
         fprintf('Group %s does not contain any tests. \n', group_ID);
@@ -404,3 +412,4 @@ end
 
 %#ok<*MCHLP>
 %#ok<*MCCD>
+
