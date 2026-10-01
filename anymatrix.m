@@ -134,7 +134,8 @@ function varargout = anymatrix(varargin)
         asManyOfPattern(alphanumericsPattern | characterListPattern("_") | ...
                         characterListPattern("-"));
     
-    capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin{:} )
+    capture_some_common_errors( arg, command, set_IDs, group_IDs, ...
+                                matrix_IDs, matrix_ID_pat, varargin{:} )
 
     % Execute the specified command.
     if startsWith('all', command)
@@ -171,7 +172,8 @@ function varargout = anymatrix(varargin)
             [~, I] = sort(lower(properties{strcmp(matrix_IDs, arg)}));
             varargout{1} = properties{strcmp(matrix_IDs, arg)}(I);
         else
-            varargout{1} = search_by_properties(matrix_IDs, properties, varargin(2:end));
+            varargout{1} = search_by_properties(matrix_IDs, properties, ...
+                                                varargin(2:end));
         end
 
     elseif startsWith('scan', command)
@@ -211,7 +213,8 @@ function varargout = anymatrix(varargin)
         end
 
     else
-        [varargout{1:nargout}] = generate_matrix(command, varargin{2:end});
+        [varargout{1:nargout}] = generate_matrix(command, ...
+                                                 varargin{2:end});
 
     end
 
@@ -219,7 +222,7 @@ end
 
 function [arg, command, varargin] = parse_input( varargin )
     varargin = string_to_char( varargin{:} );
-    assert(ischar(varargin{1}), 'Anymatrix command was not recognized');
+    assert(ischar(varargin{1}),'Anymatrix command was not recognized');
     command = varargin{1};
     arg = [];
     if numel( varargin ) >= 2
@@ -250,12 +253,15 @@ function varargin = string_to_char( varargin )
 end
 
 % Capture some common errors in the arguments.
-function capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_IDs, matrix_ID_pat, varargin)
+function capture_some_common_errors(arg, command, set_IDs, group_IDs, ...
+                                    matrix_IDs, matrix_ID_pat, varargin)
     % Check that MATLAB 2020b or higher is present.
-    assert(~verLessThan('matlab','9.9'), 'MATLAB 2020b or newer is required.');  %#ok<VERLESSMATLAB>
+    assert(~verLessThan('matlab','9.9'), ...
+           'MATLAB 2020b or newer is required.');  %#ok<VERLESSMATLAB>
 
     if matches(command, matrix_ID_pat)
-        assert(ismember(command, matrix_IDs), 'Specified matrix ID was not found.');
+        assert(ismember(command, matrix_IDs), ...
+               'Specified matrix ID was not found.');
         return;
     end
 
@@ -263,23 +269,30 @@ function capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_ID
         return;
     end
 
-    assert( any(startsWith({'groups', 'sets', 'all', 'scan', 'help', 'test', 'contents', 'lookfor'}, command)), ...
+    assert(any(startsWith({'groups', 'sets', 'all', ...
+                           'scan', 'help', 'test', 'contents', 'lookfor'}, ...
+                           command)), ...
             'Anymatrix command was not recognized.');
 
-    assert( isempty(arg) || ~any(startsWith({'lookfor', 'contents'}, command)), 'Please specify one more argument.');
+    assert(isempty(arg)||~any(startsWith({'lookfor','contents'}, command)), ...
+            'Please specify one more argument.');
 
     if numel( varargin ) == 2
-        assert( ischar(arg), 'This anymatrix command requires string arguments.');
+        assert(ischar(arg), ...
+               'This anymatrix command requires string arguments.');
         if startsWith({'help'}, command) || ...
             (startsWith('properties', command) && ...
              matches(arg, matrix_ID_pat))
-            assert(ismember(arg, matrix_IDs), 'Specified matrix ID was not found.');
+            assert(ismember(arg, matrix_IDs), ...
+                   'Specified matrix ID was not found.');
             
         elseif any(startsWith({'groups', 'contents', 'test'}, command))
-            assert(ismember(arg, group_IDs), 'The specified group ID was not found.');
+            assert(ismember(arg, group_IDs), ...
+                   'The specified group ID was not found.');
 
         elseif startsWith('sets', command)
-            assert(ismember(arg, set_IDs),'ID of the specified set was not found.');
+            assert(ismember(arg, set_IDs), ...
+                   'ID of the specified set was not found.');
         end
         
     elseif (numel(varargin) > 3 || ... 
@@ -319,7 +332,9 @@ function IDs = search_by_properties(matrix_IDs, properties, expressions)
     new_expression = '';
     for p = ex_props.'
         mod_prop = ['ismember(''' strrep(lower(p{1}), '-', ' ') ''', ' ...
-                                 'strrep(lower(matrix_properties{1}), ''-'', '' '')' ...
+                                 'strrep(lower(matrix_properties{1}), '...
+                                         '''-'', '...
+                                         ''' '')' ...
                              ')'
                    ];
         trunc_exp = expression(ind:end);
@@ -401,7 +416,8 @@ end
 
 % Display info in the Contents.m of a specified group.
 function show_contents(group_ID, root_path)
-    assert(isfile([root_path, '/', group_ID, '/private/Contents.m']), 'No Contents.m exists for that group.');
+    assert(isfile([root_path, '/', group_ID, '/private/Contents.m']), ...
+           'No Contents.m exists for that group.');
     type([root_path, '/', group_ID, '/private/Contents.m'])
 end
 
