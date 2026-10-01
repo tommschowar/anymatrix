@@ -1,5 +1,12 @@
 % Top level function for scanning the files.
 function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = scan_filesystem( root_path, rescan )
+%
+
+% Changelog:    tommsch,    2026-10-01,     Allow wildcards in am_properties.m to define properties for multiple files
+%                                           Slightly different (and more robust) parsing of the "properties" string in files to determine whether it is a "matrix-file"
+%                                           Allow placing `am_prop_list.m`,`am_prop_map.m`,`am_inv_prop_map.m` files in private folder to read additional matrix properties
+
+
     persistent set_IDs_
     persistent group_IDs_
     persistent matrix_IDs_
@@ -10,16 +17,17 @@ function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = sc
         rescan = false;
     end
 
-    
-
     if isempty(set_IDs_) || rescan
-        supported_properties_ = prop_list();
         set_IDs_ = scan_sets(root_path);
         group_IDs_ = scan_groups(root_path);
         matrix_IDs_ = scan_matrices(group_IDs_, root_path);
-        properties_ = scan_properties(matrix_IDs_, supported_properties_, root_path);
-        
+        properties_ = scan_properties(matrix_IDs_, root_path);
 
+        [pm,im] = scan_prop_map(group_IDs_, root_path);
+        properties_ = add_implied_properties(properties_, pm, im);
+
+        supported_properties_ = scan_supported_properties(group_IDs_, root_path);
+        check_properties(matrix_IDs_, properties_, supported_properties_)
         disp('Anymatrix scanning done.');
     end
 
@@ -32,10 +40,10 @@ end
 
 % Scan the sets folder and obtain the set IDs.
 function set_IDs = scan_sets( root_path )
-    set_IDs = {dir(strcat(root_path, '/sets/*.txt')).name};
+    set_IDs = {dir([root_path, '/sets/*.txt']).name};
     
     % Remove '.txt' extensions from the IDs.
-    for k = 1:length(set_IDs)
+    for k = 1:numel(set_IDs)
         dotloc = find(set_IDs{k} == '.');
         set_IDs{k} = set_IDs{k}(1:dotloc(1)-1);
     end
@@ -46,20 +54,20 @@ end
 function IDs = scan_groups( root_path )
     contents = dir(root_path);
     IDs = {};
-    for k = 1:length(contents)
+    for k = 1:numel(contents)
         if contents(k).isdir && is_group_dir(contents(k).name, root_path)
             IDs{end+1} = contents(k).name;  %#ok<AGROW>
-            addpath(strcat(root_path, '/', contents(k).name));
+            addpath([root_path '/' contents(k).name]);
         end
     end
     IDs = IDs.';
 end
 
 % Scan the group folders and obtain the matrix IDs.
-function matrix_IDs = scan_matrices(groups, root_path)
+function matrix_IDs = scan_matrices(group_IDs, root_path)
     matrix_IDs = {};
-    for group = groups.'
-        path_to_group = [root_path, '/', group{1}, '/private/'];
+    for group_ID = group_IDs.'
+        path_to_group = [root_path, '/', group_ID{1}, '/private/'];
         mfiles = dir([path_to_group, '*.m']);
         for mfile = mfiles.'
             % Find which .m files are matrix-generating files.
@@ -71,92 +79,172 @@ function matrix_IDs = scan_matrices(groups, root_path)
                )
                 matrix_IDs = [
                     matrix_IDs; 
-                    [group{1}, '/', extractBefore(mfile.name, '.m')]
+                    [group_ID{1}, '/', extractBefore(mfile.name, '.m')]
                     ];  %#ok<AGROW>
             end
         end
         
         % Read matrix IDs that are placed in properties.m files and
         % add them if they are not in yet from the M-files.
-        if isfile(strcat(path_to_group, 'am_properties.m'))
-            handle = str2func(strcat('anymatrix_', group{1}));
-            P = handle('am_properties');
-            moreIDs = strcat(group{1}, '/', P(:,1));
-            matrix_IDs = [matrix_IDs; moreIDs(~ismember(moreIDs, matrix_IDs))];  %#ok<AGROW>
+        format_check = @(x) size(x,2)==2;
+        filename = 'am_properties';  % without '.m'
+        if isfile([path_to_group, filename '.m'])
+            handle = str2func(['anymatrix_', group_ID{1}]);
+            P = handle(filename);
+            if ~format_check(P)
+                warning( ['File ''%s.m'' of group ''%s'' cannot be interpreted, '...
+                          'and thus is skipped.\n'], filename, group_ID{1} );
+            else
+                moreIDs = strcat(group_ID{1}, '/', P(:,1));
+                idx_wildcard = contains( moreIDs, '*' );
+                moreIDs(idx_wildcard) = [];
+                matrix_IDs = [matrix_IDs;
+                              moreIDs(~ismember(moreIDs, matrix_IDs))];  %#ok<AGROW>
+            end
         end
     end
 end
 
 % Get properties of a specified array of matrices in a cell array of
 % cell arrays, arranged in the same order as matrix_IDs.
-function properties = scan_properties(matrix_IDs, supported_properties, root_path)
+function properties = scan_properties(matrix_IDs, root_path)
     % List of built-in anymatrix groups.
-    built_in_groups = {
-         'contest'
-         'core'
-         'gallery'
-         'hadamard'
-         'matlab'
-         'nessie'
-         'regtools'
-         'set'
-         };
+    big = built_in_groups();
 
     properties = {};
     for matrix_ID = matrix_IDs.'
-        [current_properties, temp] = get_properties(matrix_ID{1}, root_path);
-        if size(current_properties, 2) > 1
-            current_properties = current_properties';
+        p = get_properties(matrix_ID{1}, root_path);
+        if size(p,2) > 1
+            warning( ['Format of properties for matrix ''%s'' is wrong, '...
+                     'and thus skipped.'],  matrix_ID{1} );
+            continue;
         end
-        properties = [properties; {current_properties}];  %#ok<AGROW>
+        properties = [properties; {p}];  %#ok<AGROW>
     end
 
     % Add property 'built-in' for the built-in matrices.
-    for i = 1:length(matrix_IDs)
-       if any(startsWith(matrix_IDs{i}, built_in_groups))
+    for i = 1:numel(matrix_IDs)
+       if any(startsWith(matrix_IDs{i}, big))
            properties{i} = [properties{i}; 'built-in'];  %#ok<AGROW>
        end
     end
+end
 
-    % Add parent properties if not specified.
-    M = prop_map();
-    I = inv_prop_map();
-    for i = 1:length(properties)
-        for j = 1:length(I)
-            % Find properties that can be added due to absence of some
-            % other properties.
-            if (~any(ismember(strrep(lower(I{j, 2}),'-', ' '), ...
-                    strrep(lower(properties{i}), '-', ' '))) && ...
-                ~ismember(strrep(lower(I{j, 1}), '-', ' '), ...
-                    strrep(lower(properties{i}), '-', ' ')) ...
-               )
-                properties{i} = [properties{i}; I{j, 1}];  %#ok<AGROW>
+function [pm,im] = scan_prop_map(group_IDs, root_path)
+    pm = prop_map();
+    im = inv_prop_map();
+
+    % Read prop-map that are placed in am_prop_map.m
+    format_check = @(x) iscell(x) && size(x,2)==2;
+    filename = 'am_prop_map';  % without '.m'
+    for group_ID = group_IDs.'
+        path_to_group = [root_path, '/', group_ID{1}, '/private/'];
+        if isfile([path_to_group filename '.m'])
+            handle = str2func(['anymatrix_', group_ID{1}]);
+            pm_am = handle(filename);
+            if ~format_check(pm_am)
+                warning( ['File ''%s.m'' of group ''%s'' cannot be interpreted, ' ...
+                          'and thus is skipped.\n'], filename, group_ID{1} );
+            else
+                pm = [pm; pm_am];  %#ok<AGROW>
             end
         end
+    end
+    pm = unique_pm( pm );
+
+    % Read prop-map that are placed in am_inv_prop_map.m
+    format_check = @(x) iscell(x) && size(x,2)==2;
+    filename = 'am_inv_prop_map';  % without '.m'
+    for group_ID = group_IDs.'
+        path_to_group = [root_path, '/', group_ID{1}, '/private/'];
+        if isfile([path_to_group filename '.m'])
+            handle = str2func(['anymatrix_', group_ID{1}]);
+            im_am = handle(filename);
+            if ~format_check(im_am)
+                warning( ['File ''%s.m'' of group ''%s'' cannot be interpreted,' ...
+                          'and thus is skipped.\n'], filename, group_ID{1} );
+            else
+                im = [im; im_am];  %#ok<AGROW>
+            end
+        end
+    end
+    im = unique_pm( im );
+end
+
+function pm = unique_pm( pm )
+%%
+    str = cell(size(pm,1),1);
+    for i = 1:size(pm,1)
+        str{i} = [pm{i,:}];
+        str{i} = [str{i}{:}];
+    end
+    [~,idx] = unique(str);
+    pm = pm(idx,:);
+end
+
+function properties = add_implied_properties(properties, pm, im)
+    for i = 1:numel(properties)
+        for j = 1:size(im,1)
+            % Find properties that can be added due to absence of some
+            % other properties.
+            if (~any(ismember(strrep(lower(im{j, 2}),'-', ' '), ...
+                              strrep(lower(properties{i}), '-', ' '))) && ...
+                ~ismember(strrep(lower(im{j, 1}), '-', ' '), ...
+                          strrep(lower(properties{i}), '-', ' ')) ...
+               )
+                properties{i} = [properties{i}; im{j, 1}];
+            end
+        end
+
         j = 1;
-        while j <= length(M)
+        while j <= size(pm,1)
             % Find parent properties of any of the properties already
             % in the list and add them if they are not in yet.
             if (any(ismember(strrep(lower(properties{i}), '-', ' '), ...
-                            strrep(lower(M{j, 2}), '-', ' '))) && ...
-                ~ismember(strrep(lower(M{j, 1}), '-', ' '), ...
+                             strrep(lower(pm{j, 2}), '-', ' '))) && ...
+                ~ismember(strrep(lower(pm{j, 1}), '-', ' '), ...
                           strrep(lower(properties{i}), '-', ' '))...
                )
-                properties{i} = [properties{i}; M{j, 1}];  %#ok<AGROW>
-                j=1;
+                properties{i} = [properties{i}; pm{j, 1}];
+                j = 1;
             end
             j = j+1;
         end
+        properties{i} = unique(properties{i});
     end
+end
 
+function supported_properties = scan_supported_properties(group_IDs, root_path)
+    supported_properties = prop_list();
+
+    % Read properities that are placed in am_prop_list.m
+    format_check = @(x) iscell(x) && size(x,2)==1;
+    filename = 'am_prop_list';  % without '.m'
+    for group_ID = group_IDs.'
+        path_to_group = [root_path, '/', group_ID{1}, '/private/'];
+        if isfile([path_to_group, filename '.m'])
+            handle = str2func(['anymatrix_', group_ID{1}]);
+            pl_am = handle(filename);
+            if ~format_check(pl_am)
+                warning( ['File ''%s.m'' of group ''%s'' cannot be interpreted,' ...
+                          'and thus is skipped.\n'], filename, group_ID{1} );
+            else
+                supported_properties = [supported_properties; pl_am];  %#ok<AGROW>
+            end
+        end
+    end
+    supported_properties = unique(supported_properties);
+end
+
+function check_properties( matrix_IDs, properties, supported_properties )
     % Check if all the properties can be recognized.
-    for i=1:length(matrix_IDs)
+    for i=1:numel(matrix_IDs)
         for bad_prop = ...
                 properties{i}(~ismember(strrep(lower(properties{i}), '-', ' '), ...
                                strrep(lower(supported_properties), ...
                                '-', ' ')))
             if ~isempty(bad_prop)
-                warning('Property %s in %s is not recognized.', ...
+                warning('Property ''%s'' in ''%s'' is not recognized.', ...
                     bad_prop{1}, matrix_IDs{i});
             end
         end
@@ -172,48 +260,56 @@ function out = is_group_dir(directory, root_path)
     % Check dir is not current or previous directories '.' and '..',
     % and check dir has two files additionally to '.' and '..'.
     if (any(strcmp(directory, {'.', '..'})) || ...
-            (length(dir(strcat(root_path, '/', directory)))) ~= 4 ...
+        numel(dir([root_path '/' directory])) ~= 4 ...
        )
         out = false;
     else
         % Check dir has a 'private' directory and a file
         % anymatrix_<dir_name>.
-        out = ~(isempty(dir(strcat(root_path, '/', directory, ...
-                                   '/private/'))) || ...
-                isempty(dir(strcat(root_path, '/', directory, ...
-                                   '/anymatrix_', directory, '.m'))));
+        out = ~isempty(dir([root_path '/' directory '/private/'])) && ...
+              ~isempty(dir([root_path '/' directory '/anymatrix_' directory '.m']));
     end
 end
 
 % Fetch the properties of a specified matrix.
-function [P, temp] = get_properties(matrix_ID, root_path)
+function P = get_properties(matrix_ID, root_path)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
     path_to_group = [root_path, '/', group_name, '/private/'];
-    matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
-    handle = str2func(strcat('anymatrix_', group_name));
+    matrix_name = matrix_ID(slashloc+1:numel(matrix_ID));
+    handle = str2func(['anymatrix_' group_name]);
     P = {};
     % Get properties from the M-file of the matrix.
-    mfile_path = strcat(path_to_group, matrix_name, '.m');
+    mfile_path = [path_to_group matrix_name '.m'];
     if isfile(mfile_path)
         mfile_contents = fileread(mfile_path);
-        if (contains(mfile_contents, 'properties = {') || ...
-            contains(mfile_contents, 'properties= {') || ...
-            contains(mfile_contents, 'properties ={') || ...
-            contains(mfile_contents, 'properties={') ...
-           )
-            noutputs = nargout(strcat(path_to_group, matrix_name));
-            temp = {};
-            [temp{1:noutputs-1},P] = handle(matrix_name);
+        if regexp( mfile_contents, '^\s*function.*properties.*=', 'once' )
+            noutputs = nargout([path_to_group matrix_name]);
+            temp = {};  % get last output of function
+            [temp{1:noutputs-1},P] = handle(matrix_name);  %#ok<NASGU>
+        end
+        P = P.';
+    end
+    
+
+    % Get other properties from the entry in the am_properties.m file.
+    format_check = @(x) size(x,2)==2;
+    filename = 'am_properties';  % without '.m'
+    if isfile([path_to_group filename '.m'])
+        am_properties = handle(filename);
+        if ~format_check(am_properties)
+           warning( ['File ''%s.m'' in ''%s'' cannot be interpreted, '...
+                     'and thus is skipped.\n'], ...
+                    filename, path_to_group );
+        else
+            find_idx = ~cellfun('isempty', ...
+                                regexp(matrix_name, ...
+                                       strcat('^', ...
+                                              regexptranslate('wildcard', ...
+                                                              am_properties(:, 1)), ...
+                                              '$' ), ...
+                                       'once' ) );
+            P = [P; [am_properties{find_idx,2}]'];
         end
     end
-    % Get other properties from the entry in the properties.m file.
-    if isfile(strcat(path_to_group, 'am_properties.m'))
-        temp = handle('am_properties');
-        if ismember(matrix_name, temp(:, 1))
-            temp = temp{strcmp(matrix_name, temp(:, 1)), 2};
-            P = [P, temp(~ismember(temp, P))];
-        end
-    end
-    P = P.';
 end

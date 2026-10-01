@@ -101,6 +101,9 @@ function varargout = anymatrix(varargin)
 %   Numer. Algorithms 46(2), 189--194 (2007).
 %   https://doi.org/10.1007/s11075-007-9136-9
 
+% Changelog:    2026-09-29,     tommsch,        Refactored
+%                                               Multiply properties can be given to filter out matrices
+
     persistent added_to_path    
     % Get the directory containing the anymatrix.m file.
     root_path = fileparts([mfilename('fullpath'), '.m']);
@@ -168,7 +171,7 @@ function varargout = anymatrix(varargin)
             [~, I] = sort(lower(properties{strcmp(matrix_IDs, arg)}));
             varargout{1} = properties{strcmp(matrix_IDs, arg)}(I);
         else
-            varargout{1} = search_by_properties(arg, matrix_IDs, properties);
+            varargout{1} = search_by_properties(matrix_IDs, properties, varargin(2:end));
         end
 
     elseif startsWith('scan', command)
@@ -253,17 +256,19 @@ function capture_some_common_errors( arg, command, set_IDs, group_IDs, matrix_ID
 
     if matches(command, matrix_ID_pat)
         assert(ismember(command, matrix_IDs), 'Specified matrix ID was not found.');
+        return;
+    end
 
-    elseif ~any(startsWith({ ...
-                'properties', 'groups', ...
-                'sets', 'all', 'scan', 'help', 'test', 'contents', ...
-                'lookfor'}, command))
-            error('Anymatrix command was not recognized.');
+    if any(startsWith({'properties'}, command))
+        return;
+    end
 
-    elseif isempty(arg)
-        assert(~any(startsWith({'lookfor', 'contents'}, command)), 'Please specify one more argument.');
+    assert( any(startsWith({'groups', 'sets', 'all', 'scan', 'help', 'test', 'contents', 'lookfor'}, command)), ...
+            'Anymatrix command was not recognized.');
 
-    elseif numel( varargin ) == 2
+    assert( isempty(arg) || ~any(startsWith({'lookfor', 'contents'}, command)), 'Please specify one more argument.');
+
+    if numel( varargin ) == 2
         assert( ischar(arg), 'This anymatrix command requires string arguments.');
         if startsWith({'help'}, command) || ...
             (startsWith('properties', command) && ...
@@ -287,7 +292,11 @@ end
 
 % Search for matrices that have properties, according to a specified
 % logical expression, and return their IDs.
-function IDs = search_by_properties(expression, matrix_IDs, properties)
+function IDs = search_by_properties(matrix_IDs, properties, expressions)
+    expression = expressions{1};
+    for i = 2:numel( expressions )
+        expression = [expression ' and ' expressions{i}]; %#ok<AGROW>
+    end
     IDs = {};
     % Replace 'and', 'or', and 'not' by corresponding MATLAB symbols.
     expression = replace(expression, ' and ', ' & ');
@@ -301,8 +310,7 @@ function IDs = search_by_properties(expression, matrix_IDs, properties)
     % Assume properties are made up letters, can include a hyphen
     % or a white space character, and there is no case sensitivity.
     pat = (lettersPattern + whitespacePattern + lettersPattern) ...
-          | (lettersPattern + characterListPattern('-') ...
-              + lettersPattern) ...
+          | (lettersPattern + characterListPattern('-') + lettersPattern) ...
           | lettersPattern;
     % Extract properties from the logical expression and replace
     % them by function calls to test for membership.
@@ -310,17 +318,18 @@ function IDs = search_by_properties(expression, matrix_IDs, properties)
     ind = 1;
     new_expression = '';
     for p = ex_props.'
-        mod_prop = ['ismember(''', ...
-            strrep(lower(p{1}), '-', ' '), ...
-            ''', strrep(lower(matrix_properties{1}), ''-'', '' ''))'];
+        mod_prop = ['ismember(''' strrep(lower(p{1}), '-', ' ') ''', ' ...
+                                 'strrep(lower(matrix_properties{1}), ''-'', '' '')' ...
+                             ')'
+                   ];
         trunc_exp = expression(ind:end);
         % Find where the property is in the expression.
         prop_index = strfind(trunc_exp, p{1});
         % Take anything before the property and append the modified
         % version of the property.
         new_expression = [new_expression, ...
-            trunc_exp(1:prop_index(1)-1), ...
-            mod_prop];  %#ok<AGROW>
+                          trunc_exp(1:prop_index(1)-1), ...
+                          mod_prop];  %#ok<AGROW>
         % Move the index after the property that was replaced.
         ind = ind + prop_index(1) + length(p{1}) - 1;
     end
