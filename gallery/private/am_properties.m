@@ -3,14 +3,14 @@ function P = am_properties
 P = {
     'binomial', {'involutory', 'integer'}
     'cauchy', {'symmetric', 'positive definite', 'totally positive', ...
-               'inverse', 'infinitely divisible', 'parameter-dependent'}
+               'inverse-explicitly-known', 'infinitely divisible', 'parameter-dependent'}
     'chebspec', {'defective', 'nilpotent'}
     'chebvand', {'rectangular', 'square', 'parameter-dependent'}
-    'chow', {'hessenberg', 'toeplitz', 'binary', 'eigenvalues', ...
+    'chow', {'hessenberg', 'toeplitz', 'binary', 'eigenvalues-explicitly-known', ...
              'rank deficient', 'parameter-dependent'}
-    'circul', {'circulant', 'toeplitz', 'normal', 'eigenvalues', ...
+    'circul', {'circulant', 'toeplitz', 'normal', 'eigenvalues-explicitly-known', ...
                'parameter-dependent'}
-    'clement', {'tridiagonal', 'eigenvalues', 'singular values'}
+    'clement', {'tridiagonal', 'eigenvalues-explicitly-known', 'singular values'}
     'compar', {}
     'condex', {'parameter-dependent'}
     'cycol', {'rectangular', 'square', 'rank deficient', 'random'}
@@ -19,11 +19,11 @@ P = {
     'dramadah', {'toeplitz', 'integer', 'nonnegative', ...
                  'ill conditioned', 'unimodular'}
     'fiedler', {'symmetric', 'indefinite', 'parameter-dependent'}
-    'forsythe', {'eigenvalues', 'parameter-dependent'}
+    'forsythe', {'eigenvalues-explicitly-known', 'parameter-dependent'}
     'frank', {'hessenberg', 'integer', 'totally nonnegative'}
     'gcdmat', {'symmetric', 'positive definite', 'integer', 'positive', ...
                'infinitely divisible'}
-    'gearmat', {'eigenvalues', 'rank deficient', 'integer', ...
+    'gearmat', {'eigenvalues-explicitly-known', 'rank deficient', 'integer', ...
                 'parameter-dependent'}
     'grcar', {'hessenberg', 'toeplitz', 'integer', 'parameter-dependent'}
     'hanowa', {'parameter-dependent'}
@@ -33,7 +33,7 @@ P = {
     'invol', {'involutory', 'ill conditioned'}
     'ipjfact', {'symmetric', 'positive definite', 'hankel', ...
                 'ill conditioned', 'positive'}
-    'jordbloc', {'bidiagonal', 'eigenvalues', 'binary', 'nonnegative', ...
+    'jordbloc', {'bidiagonal', 'eigenvalues-explicitly-known', 'binary', 'nonnegative', ...
                  'defective', 'toeplitz', 'parameter-dependent'}
     'kahan', {'rectangular', 'square', 'triangular', 'parameter-dependent'}
     'kms', {'symmetric', 'positive definite', 'toeplitz', ...
@@ -41,13 +41,13 @@ P = {
     'krylov', {'rectangular', 'square', 'parameter-dependent'}
     'lauchli', {'rectangular', 'parameter-dependent'}
     'lehmer', {'symmetric', 'positive definite', 'totally nonnegative', ...
-               'infinitely divisible', 'inverse'}
+               'infinitely divisible', 'inverse-explicitly-known'}
     'leslie', {'nonnegative', 'binary', 'parameter-dependent'}
     'lesp', {'tridiagonal'}
-    'lotkin', {'ill conditioned', 'inverse'}
+    'lotkin', {'ill conditioned', 'inverse-explicitly-known'}
     'minij', {'symmetric', 'positive definite', 'infinitely divisible', ...
-              'eigenvalues', 'integer', 'positive'}
-    'moler', {'symmetric', 'positive definite', 'eigenvalues', 'integer'}
+              'eigenvalues-explicitly-known', 'integer', 'positive'}
+    'moler', {'symmetric', 'positive definite', 'eigenvalues-explicitly-known', 'integer'}
     'neumann', {'rank deficient', 'sparse', 'diagonally dominant'}
     'normaldata', {'rectangular', 'parameter-dependent', 'random'}
     'orthog', {'orthogonal'}
@@ -65,11 +65,11 @@ P = {
     'randjorth', {'random', 'parameter-dependent', 'pseudo-orthogonal'}
     'rando', {'rectangular', 'square', 'random', 'integer'}
     'randsvd', {'orthogonal', 'rectangular', 'square', 'random'}
-    'redheff', {'binary', 'nonnegative', 'eigenvalues'}
-    'riemann', {'integer', 'eigenvalues'}
+    'redheff', {'binary', 'nonnegative', 'eigenvalues-explicitly-known'}
+    'riemann', {'integer', 'eigenvalues-explicitly-known'}
     'ris', {'hankel', 'symmetric', 'indefinite'}
-    'sampling', {'eigenvalues'}
-    'smoke', {'complex', 'eigenvalues'}
+    'sampling', {'eigenvalues-explicitly-known'}
+    'smoke', {'complex', 'eigenvalues-explicitly-known'}
     'toeppd', {'symmetric', 'positive definite', 'toeplitz', ...
                'parameter-dependent', 'rank deficient'} 
     'toeppen', {'toeplitz', 'sparse', 'parameter-dependent'} 

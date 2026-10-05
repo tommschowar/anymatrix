@@ -8,7 +8,7 @@ function [A,properties] = nilpot_tridiag(n)
 %   James Wilson, Some nilpotent, tridiagonal matrices with a special sign
 %   Pattern, Linear Algebra App., 436, 4446-4450, 2012
 
-properties = {'tridiagonal', 'defective', 'nilpotent', 'eigenvalues', ...
+properties = {'tridiagonal', 'defective', 'nilpotent', 'eigenvalues-explicitly-known', ...
               'sparse'};
 if nargin == 0, A = []; return, end
 

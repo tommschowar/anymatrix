@@ -16,7 +16,7 @@ function [A,properties] = rschur(n,mu,x,y)
 %      CERFACS, Toulouse, France and THOMSON-CSF, Orsay, France,
 %      June 1993.
 
-properties = {'parameter-dependent', 'eigenvalues'};
+properties = {'parameter-dependent', 'eigenvalues-explicitly-known'};
 if nargin == 0, A = []; return, end
 
 m = floor(n/2);

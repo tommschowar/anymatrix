@@ -8,7 +8,7 @@ function [A,properties] = stoch_revtri(n)
 %  Kiran Kedlaya and Lenhard Ng, The Rook and the Half-Chessboard, or How 
 %    Not to Diagonalize a Matrix, Amer. Math. Monthly 105, 819-824, 1998.
 
-properties = {'stochastic', 'eigenvalues'};
+properties = {'row-stochastic', 'eigenvalues-explicitly-known'};
 if nargin == 0, A = []; return, end
 
 A = anymatrix('core/stoch_cesaro',n);

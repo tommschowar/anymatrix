@@ -19,7 +19,7 @@ function [A,properties] = blockcirc(B,k)
 %   Henryk Minc, Spectra of Irreducible Matrices, Proc. Edinb. Math. Soc.
 %     19(30:231-236, 1975.
 
-properties = {'parameter-dependent', 'eigenvalues', 'nonnegative'};
+properties = {'parameter-dependent', 'eigenvalues-explicitly-known', 'nonnegative'};
 if nargin == 0, A = []; return, end
 
 nprime = 0;

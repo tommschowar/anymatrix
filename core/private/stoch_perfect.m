@@ -11,7 +11,7 @@ function [A,properties] = stoch_perfect(x)
 %  Hazel Perfect, Methods of Constructing Certain Stochastic Matrices,
 %    Duke Mathematical Journal 20(3):395-404, 1953.
 
-properties = {'stochastic', 'eigenvalues', 'parameter-dependent'};
+properties = {'row-stochastic', 'eigenvalues-explicitly-known', 'parameter-dependent'};
 if nargin == 0, A = []; return, end
 
 if length(x) == 1

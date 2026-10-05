@@ -10,7 +10,7 @@ function [A,properties] = circul_binom(n)
 %   Irwin Kra and Santiago Simanca, On Circulant Matrices,
 %   Notices Amer. Math. Soc. 59 (3), 368-377, 2012. Prop. 26.
 
-properties = {'circulant', 'eigenvalues', 'positive', 'normal', 'toeplitz'};
+properties = {'circulant', 'eigenvalues-explicitly-known', 'positive', 'normal', 'toeplitz'};
 if nargin == 0, A = []; return, end
 
 for i = 1:n

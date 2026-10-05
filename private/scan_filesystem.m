@@ -128,6 +128,8 @@ function properties = scan_properties(matrix_IDs, root_path)
            properties{i} = [properties{i}; 'built-in'];  %#ok<AGROW>
        end
     end
+
+    properties = sanitize_property( properties );
 end
 
 function [pm,im] = scan_prop_map(group_IDs, root_path)
@@ -151,6 +153,7 @@ function [pm,im] = scan_prop_map(group_IDs, root_path)
         end
     end
     pm = unique_pm( pm );
+    pm = sanitize_property( pm );
 
     % Read prop-map that are placed in am_inv_prop_map.m
     format_check = @(x) iscell(x) && size(x,2)==2;
@@ -169,6 +172,7 @@ function [pm,im] = scan_prop_map(group_IDs, root_path)
         end
     end
     im = unique_pm( im );
+    im = sanitize_property( im );
 end
 
 function pm = unique_pm( pm )
@@ -187,10 +191,10 @@ function properties = add_implied_properties(properties, pm, im)
         for j = 1:size(im,1)
             % Find properties that can be added due to absence of some
             % other properties.
-            if (~any(ismember(strrep(lower(im{j, 2}),'-', ' '), ...
-                              strrep(lower(properties{i}), '-', ' '))) && ...
-                ~ismember(strrep(lower(im{j, 1}), '-', ' '), ...
-                          strrep(lower(properties{i}), '-', ' ')) ...
+            if (~any(ismember(strrep(im{j, 2},'-', ''), ...
+                              strrep(properties{i}, '-', ''))) && ...
+                ~ismember(strrep(im{j, 1}, '-', ''), ...
+                          strrep(properties{i}, '-', '')) ...
                )
                 properties{i} = [properties{i}; im{j, 1}];
             end
@@ -200,10 +204,10 @@ function properties = add_implied_properties(properties, pm, im)
         while j <= size(pm,1)
             % Find parent properties of any of the properties already
             % in the list and add them if they are not in yet.
-            if (any(ismember(strrep(lower(properties{i}), '-', ' '), ...
-                             strrep(lower(pm{j, 2}), '-', ' '))) && ...
-                ~ismember(strrep(lower(pm{j, 1}), '-', ' '), ...
-                          strrep(lower(properties{i}), '-', ' '))...
+            if (any(ismember(strrep(properties{i}, '-', ''), ...
+                             strrep(pm{j, 2}, '-', ''))) && ...
+                ~ismember(strrep(pm{j, 1}, '-', ''), ...
+                          strrep(properties{i}, '-', ''))...
                )
                 properties{i} = [properties{i}; pm{j, 1}];
                 j = 1;
@@ -234,15 +238,15 @@ function supported_properties = scan_supported_properties(group_IDs, root_path)
         end
     end
     supported_properties = unique(supported_properties);
+    supported_properties = sanitize_property(supported_properties);
 end
 
 function check_properties( matrix_IDs, properties, supported_properties )
     % Check if all the properties can be recognized.
     for i=1:numel(matrix_IDs)
         for bad_prop = ...
-                properties{i}(~ismember(strrep(lower(properties{i}), '-', ' '), ...
-                               strrep(lower(supported_properties), ...
-                               '-', ' ')))
+                properties{i}(~ismember(strrep(properties{i}, '-', ''), ...
+                               strrep(supported_properties, '-', '')))
             if ~isempty(bad_prop)
                 warning('Property ''%s'' in ''%s'' is not recognized.', ...
                     bad_prop{1}, matrix_IDs{i});
@@ -310,6 +314,24 @@ function P = get_properties(matrix_ID, root_path)
                                               '$' ), ...
                                        'once' ) );
             P = [P; [am_properties{find_idx,2}]'];
+        end
+    end
+end
+
+function p = sanitize_property( p )
+    for i = 1:numel(p)
+        if iscell(p{i})
+            for j = 1:numel( p{i} )
+                p{i}{j} = lower(p{i}{j});
+                p{i}{j} = strtrim(p{i}{j});
+                p{i}{j}(p{i}{j}=='_') = '-';
+                p{i}{j}(p{i}{j}==' ') = '-';
+            end
+        else
+            p{i} = lower(p{i});
+            p{i} = strtrim(p{i});
+            p{i}(p{i}=='_') = '-';
+            p{i}(p{i}==' ') = '-';
         end
     end
 end

@@ -10,7 +10,7 @@ function [A,properties] = stoch_cesaro(n)
 %  Arlen Brown, Paul R. Halmos, and  Allen L. Shields, Cesaro Operators,
 %    Acta Sci. Math. 26, 81-82, 1965.
 
-properties = {'stochastic', 'triangular'};
+properties = {'row-stochastic', 'triangular'};
 if nargin == 0, A = []; return, end
 
 x = ones(n,1)./(1:n)';

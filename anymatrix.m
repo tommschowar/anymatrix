@@ -41,6 +41,7 @@ function varargout = anymatrix(varargin)
 %       accepted).
 %   M = ANYMATRIX('properties', properties) - list matrices having
 %       the specified properties.
+%   M = ANYMATRIX('root_path') - returns the root path of anymatrix
 %   ANYMATRIX('scan') - force a scan of the file system.
 %   S = ANYMATRIX('sets') - return the available sets.
 %   [s, mat1, ..., matK] = ANYMATRIX('sets', set_name) - return matrix IDs
@@ -104,6 +105,7 @@ function varargout = anymatrix(varargin)
 % Changelog:    2026-09-29,     tommsch,        Refactored
 %                                               Multiply properties can be given as multiple arguments
 %                                               Behaviour change: matrices of a set are returned as a cell array in the second return argument
+%                                               New option 'root_path'
 
     root_path = fileparts([mfilename('fullpath'), '.m']);
 
@@ -121,6 +123,9 @@ function varargout = anymatrix(varargin)
     if startsWith('all', command)
         varargout{1} = matrix_IDs;
 
+    elseif startsWith('root_path', command)
+        varargout{1} = root_path;
+
     elseif startsWith('contents', command)
         show_contents(arg, root_path);
 
@@ -136,9 +141,14 @@ function varargout = anymatrix(varargin)
     elseif startsWith('lookfor', command)
         do_lookfor(arg, matrix_IDs, root_path)
 
+    % we check 'properties' before 'path',
+    % so that 'p' becomes an abbreviation for 'properties'
     elseif startsWith('properties', command)
         varargout{1} = do_properties(matrix_IDs, properties, ...
                                      supported_properties, arg, varargin{:} );
+
+    elseif startsWith('path', command)
+        varargout{1} = do_path(arg, root_path);
 
     elseif startsWith('scan', command)
         scan_filesystem(root_path, true);
@@ -171,6 +181,13 @@ function add_to_path(root_path)
     end
 end
 
+function str = do_path(arg, root_path)
+    slashloc = find(arg == '/');
+    group_name = arg(1:slashloc-1);
+    matrix_name = arg(slashloc+1:end);
+    str = [fullfile(root_path, group_name, 'private', matrix_name) '.m'];
+end
+
 function do_git( arg, root_path, varargin)
     update_git_group(arg, varargin{3}, root_path);
 end
@@ -200,21 +217,20 @@ end
 function out = do_properties(matrix_IDs, properties, ...
                              supported_properties, arg, varargin )
     if isempty( arg )
-        [~, I] = sort(lower(supported_properties));
+        [~, I] = sort(supported_properties);
         out = supported_properties(I);
     elseif is_matrixID(arg)
-        [~, I] = sort(lower(properties{strcmp(matrix_IDs, arg)}));
+        [~, I] = sort(properties{strcmp(matrix_IDs, arg)});
         out = properties{strcmp(matrix_IDs, arg)}(I);
     else
-        out = search_by_properties(matrix_IDs, properties, varargin(2:end));
+        out = search_by_properties(matrix_IDs, properties, supported_properties, varargin(2:end));
     end
 end
 
 function [S, matrices] = do_sets(root_path, arg)
-    S = readcell( ...
-            [root_path, '/sets/', arg, '.txt'], ...
-            'Delimiter', ':', 'CommentStyle', '%', ...
-            'Whitespace', ' \n');
+    S = readcell( [root_path '/sets/' arg '.txt'], ...
+                  'Delimiter',':', 'CommentStyle','%', ...
+                  'Whitespace', ' \n');
     m_idx = 2;
     matrices = {};
     % Generate matrices using parameters specified in the set.
@@ -251,7 +267,7 @@ function [arg, command, varargin] = parse_input( varargin )
     end
 
     varargin = string_to_char( varargin{:} );
-    assert(ischar(varargin{1}),'Anymatrix command was not recognized');
+    assert(ischar(varargin{1}), 'Anymatrix command was not recognized');
     command = varargin{1};
     if numel( varargin ) >= 2
         arg = varargin{2};
@@ -298,7 +314,8 @@ function capture_some_common_errors(arg, command, set_IDs, group_IDs, ...
     end
 
     assert(any(startsWith({'groups', 'sets', 'all', ...
-                           'scan', 'help', 'test', 'contents', 'lookfor'}, ...
+                           'scan', 'help', 'test', 'contents', ...
+                           'root_path','path','lookfor'}, ...
                            command)), ...
             'Anymatrix command was not recognized.');
 
@@ -333,58 +350,58 @@ end
 
 % Search for matrices that have properties, according to a specified
 % logical expression, and return their IDs.
-function IDs = search_by_properties(matrix_IDs, properties, expressions)
+function IDs = search_by_properties(matrix_IDs, properties, supported_properties, expressions)
     expression = expressions{1};
     for i = 2:numel( expressions )
-        expression = [expression ' and ' expressions{i}]; %#ok<AGROW>
+        expression = [expression ' and ' expressions{i}];  %#ok<AGROW>
     end
     IDs = {};
+    expression = lower( expression );
+    expression(expression == '_') = '-';
     % Replace 'and', 'or', and 'not' by corresponding MATLAB symbols.
-    expression = replace(expression, ' and ', ' & ');
-    expression = replace(expression, ' or ', ' | ');
-    expression = replace(expression, ' not ', ' ~');
-    expression = replace(expression, '(not ', '(~');
-    if startsWith(expression, 'not')
-        expression = expression(4:length(expression));
+    expression = regexprep(expression, '\s+and\s+', ' & ', 'ignorecase');
+    expression = regexprep(expression, '\s+or\s+', ' | ', 'ignorecase');
+    expression = regexprep(expression, '\s+not\s+', ' ~', 'ignorecase');
+    expression = regexprep(expression, '\(not\s+', '(~', 'ignorecase');
+    if startsWith( expression, 'not ' )
+        expression = expression(4:end);
         expression(1) = '~';
     end
     % Assume properties are made up letters, can include a hyphen
     % or a white space character, and there is no case sensitivity.
-    pat = (lettersPattern + whitespacePattern + lettersPattern) ...
-          | (lettersPattern + characterListPattern('-') + lettersPattern) ...
-          | lettersPattern;
-    % Extract properties from the logical expression and replace
-    % them by function calls to test for membership.
-    ex_props = extract(expression, pat);
+    property_pat = '[A-Za-z][A-Za-z0-9\s_-]*';
+    [idx_props_start, idx_props_end] = regexp( expression, property_pat );
     ind = 1;
     new_expression = '';
-    for p = ex_props.'
-        mod_prop = ['ismember(''' strrep(lower(p{1}), '-', ' ') ''', ' ...
-                                 'strrep(lower(matrix_properties{1}), '...
+    for idx = [idx_props_start; idx_props_end]
+        p = strtrim(expression(idx(1):idx(2)));
+        if ~ismember(p, supported_properties)
+            warning( 'A given property is not supported: ''%s''.', p ); 
+        end
+        mod_prop = ['ismember(''' strrep(p, '-', ' ') ''', ' ...
+                                 'strrep(matrix_properties{1}, '...
                                          '''-'', '...
                                          ''' '')' ...
                              ')'
                    ];
         trunc_exp = expression(ind:end);
         % Find where the property is in the expression.
-        prop_index = strfind(trunc_exp, p{1});
+        prop_index = strfind(trunc_exp, p);
         % Take anything before the property and append the modified
         % version of the property.
         new_expression = [new_expression, ...
                           trunc_exp(1:prop_index(1)-1), ...
                           mod_prop];  %#ok<AGROW>
         % Move the index after the property that was replaced.
-        ind = ind + prop_index(1) + length(p{1}) - 1;
+        ind = ind + prop_index(1) + numel(p) - 1;
     end
     new_expression = [new_expression, expression(ind:end)];
 
-    % Find matrices whose properties satisfy the specified logical
-    % expression.
+    % Find matrices whose properties satisfy the specified logical expression.
     k = 0;
     for matrix_properties = properties.'
         k = k + 1;
-        % Test if the expression is true for this matrix
-        % and add it's ID.
+        % Test if the expression is true for this matrix and add it's ID.
         if eval(new_expression)
             IDs = [IDs; matrix_IDs{k}];  %#ok<AGROW>
         end
@@ -395,11 +412,10 @@ end
 function varargout = generate_matrix(matrix_ID, varargin)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
-    matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
+    matrix_name = matrix_ID(slashloc+1:end);
     handle = str2func(['anymatrix_', group_name]);
     if ~isempty(varargin)
-        [varargout{1:max(1,nargout)}] = handle(matrix_name, ...
-            varargin{1:length(varargin)});
+        [varargout{1:max(1,nargout)}] = handle(matrix_name, varargin{:});
     else
         [varargout{1:max(1,nargout)}] = handle(matrix_name);
     end
@@ -409,7 +425,7 @@ end
 function show_matrix_help(matrix_ID)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
-    matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
+    matrix_name = matrix_ID(slashloc+1:end);
     if strcmp('gallery', group_name)
         help(['private/', matrix_name]);
     elseif strcmp('matlab', group_name)
@@ -426,11 +442,10 @@ function found_IDs = lookfor_term(term, matrix_IDs, root_path)
         matrix_ID = ID_cell{1};
         slashloc = find(matrix_ID == '/');
         group_name = matrix_ID(1:slashloc-1);
-        matrix_name = matrix_ID(slashloc+1:length(matrix_ID));
-        path_to_mat = [root_path, '/', group_name, '/private/', ...
-            matrix_name];
+        matrix_name = matrix_ID(slashloc+1:end);
+        path_to_mat = [root_path '/' group_name '/private/' matrix_name];
         if strcmp('gallery', group_name)
-            H = help(['private/', matrix_name]);
+            H = help(['private/' matrix_name]);
         elseif strcmp('matlab', group_name)
             H = help(matrix_name);
         else
@@ -444,19 +459,18 @@ end
 
 % Display info in the Contents.m of a specified group.
 function show_contents(group_ID, root_path)
-    assert(isfile([root_path, '/', group_ID, '/private/Contents.m']), ...
+    assert(isfile([root_path '/' group_ID '/private/Contents.m']), ...
            'No Contents.m exists for that group.');
-    type([root_path, '/', group_ID, '/private/Contents.m'])
+    type([root_path '/' group_ID '/private/Contents.m'])
 end
 
 
 
 % Run a testsuite of a particular group.
 function run_group_tests(group_ID, root_path)
-    handle = str2func(['anymatrix_', group_ID]);
+    handle = str2func(['anymatrix_' group_ID]);
     test_func = 'test_run';
-    if (isfile([root_path, '/', group_ID, '/private/', ...
-                      test_func, '.m']))
+    if isfile([root_path '/' group_ID '/private/' test_func '.m'])
         handle(test_func);
     else
         fprintf('Group %s does not contain any tests. \n', group_ID);
@@ -464,19 +478,8 @@ function run_group_tests(group_ID, root_path)
 end
 
 function ret = is_matrixID( str )
-    persistent matrix_ID_pat
-    if isempty(matrix_ID_pat)
-        matrix_ID_pat = ...
-            asManyOfPattern( ...
-                alphanumericsPattern | ...
-                characterListPattern("_") | ...
-                characterListPattern("-")) + ...
-                '/' + ...
-                asManyOfPattern(alphanumericsPattern | ...
-                characterListPattern("_") | ...
-                characterListPattern("-"));
-    end
-    ret = matches(str, matrix_ID_pat);
+    matrix_ID_pat = '^[A-Za-z][A-Za-z0-9_-]*/[A-Za-z][A-Za-z0-9_-]*$';
+    ret = ~isempty( regexp( str, matrix_ID_pat, 'once' ) );
 end
 
 %#ok<*MCHLP>

@@ -10,7 +10,7 @@ function [P,properties] = pick(n)
 %   D. A. Gregory and S. J. Kirkland and B. L. Shader, Pick's Inequality
 %   and Tournaments, Linear Algebra Appl. 186, 15-36, 1993.
 
-properties = {'skew-symmetric', 'integer', 'toeplitz', 'eigenvalues'};
+properties = {'skew-symmetric', 'integer', 'toeplitz', 'eigenvalues-explicitly-known'};
 if nargin == 0, P = []; return, end
 
 P = triu(ones(n),1);

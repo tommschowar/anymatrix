@@ -10,7 +10,7 @@ function [A,properties] = biogeography(n)
 %   B. Igelnik and D. Simon, The Eigenvalues of a Tridiagonal
 %   Matrix in Biogeography, Appl. Math. Comput. 218, 195-201, 2011.
 
-properties = {'tridiagonal', 'eigenvalues', 'sparse'};
+properties = {'tridiagonal', 'eigenvalues-explicitly-known', 'sparse'};
 if nargin == 0, A = []; return, end
 
 c = (1:n-1)/(n-1);

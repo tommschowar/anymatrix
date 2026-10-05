@@ -15,7 +15,7 @@ function [X,e,properties] = cross(x)
 
 %   By Xiaobo Liu and Nick Higham.
 
-properties = {'symmetric', 'orthogonal', 'eigenvalues'};
+properties = {'symmetric', 'orthogonal', 'eigenvalues-explicitly-known'};
 if nargin == 0, X = []; e = []; return, end
 
 m = length(x);

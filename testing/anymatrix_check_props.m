@@ -18,8 +18,7 @@ P = anymatrix('p', matrix_ID);
 all_properties_ok = true;
 
 for prop = P.'
-    test_func_name = strcat('test_', strrep(strrep(lower(prop{1}), ...
-                                                   '-', '_'), ' ', '_'));
+    test_func_name = strcat('test_', prop{1});
     if isfile(strcat(root_path, '/private/', test_func_name, '.m'))
         handle = str2func(test_func_name);
         verifyTrue(testcase, handle(M), ...

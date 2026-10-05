@@ -13,7 +13,7 @@ function [P,properties] = blockhouse(Z)
 %   and Computation, SIAM J. Numer. Anal. 25(1), 189-205, 1988.
 
 properties = {'orthogonal', 'symmetric', 'indefinite', 'involutory', ...
-              'eigenvalues', 'parameter-dependent'};
+              'eigenvalues-explicitly-known', 'parameter-dependent'};
 if nargin == 0, P = []; return, end
     
 if size(Z) == 1

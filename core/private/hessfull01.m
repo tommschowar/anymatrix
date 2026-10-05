@@ -17,7 +17,7 @@ function [A,properties] = hessfull01(n)
 %     SIAM J. Matrix Anal. Appl. 22 (2), 627-645, 2000.
 
 properties = {'hessenberg', 'toeplitz', 'binary', 'totally nonnegative', ...
-              'rank deficient', 'eigenvalues'};
+              'rank deficient', 'eigenvalues-explicitly-known'};
 if nargin == 0, A = []; return, end
 
 A = tril(ones(n),1);

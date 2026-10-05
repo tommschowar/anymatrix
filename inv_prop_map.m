@@ -8,4 +8,6 @@ function M = inv_prop_map
 M = {'real', {'complex'}
      'scalable', {'fixed size'}
      'square', {'rectangular'}
+     'finite', {'nonfinite'}
+     'invertible', {'rank deficient'}
     };
