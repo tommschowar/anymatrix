@@ -121,6 +121,7 @@ function varargout = anymatrix(varargin)
     % Execute the specified command.
     if isempty( command )
         fprintf( 'Type ``help anymatrix`` or ``anymatrix xyz``` to get help on anymatrix or topic ''xyz''.\n' );
+
     elseif startsWith('all', command)
         varargout{1} = matrix_IDs;
 
@@ -345,17 +346,14 @@ function IDs = search_by_properties(matrix_IDs, properties, ...
     [idx_props_start, idx_props_end] = regexp( expression, property_pat );
     ind = 1;
     new_expression = '';
+    supported_properties = shrink_property(supported_properties);
     for idx = [idx_props_start; idx_props_end]
         p = strtrim(expression(idx(1):idx(2)));
+        p = shrink_property(p);
         if ~ismember(p, supported_properties)
             fprintf( 2, 'A given property is not supported: ''%s''.\n', p );
         end
-        mod_prop = ['ismember(''' strrep(p, '-', ' ') ''', ' ...
-                                 'strrep(matrix_properties{1}, '...
-                                         '''-'', '...
-                                         ''' '')' ...
-                             ')'
-                   ];
+        mod_prop = ['(isfield(mp, ''' p ''') && all(mp.' p '))'];
         trunc_exp = expression(ind:end);
         % Find where the property is in the expression.
         prop_index = strfind(trunc_exp, p);
@@ -372,6 +370,7 @@ function IDs = search_by_properties(matrix_IDs, properties, ...
     % Find matrices whose properties satisfy the specified logical expression.
     k = 0;
     for matrix_properties = properties.'
+        mp = shrink_property(matrix_properties{1});  %#ok<NASGU>
         k = k + 1;
         % Test if the expression is true for this matrix and add it's ID.
         if eval(new_expression)
@@ -478,6 +477,8 @@ function matrix_ID = find_matrixID( matrix_ID, matrix_IDs )
                     'Add the group name to the matrix-ID.']);
     end
 end
+
+
 
 %#ok<*MCHLP>
 %#ok<*MCCD>

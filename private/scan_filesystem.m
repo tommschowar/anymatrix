@@ -109,27 +109,33 @@ end
 % cell arrays, arranged in the same order as matrix_IDs.
 function properties = scan_properties(matrix_IDs, root_path)
     % List of built-in anymatrix groups.
-    big = built_in_groups();
-
     properties = {};
     for matrix_ID = matrix_IDs.'
         p = get_properties(matrix_ID{1}, root_path);
-        if size(p,2) > 1
-            warning( ['Format of properties for matrix ''%s'' is wrong, '...
-                     'and thus skipped.'],  matrix_ID{1} );
-            continue;
+        if iscell(p)
+            if isempty(p)
+                p = struct;
+                % do nothing
+            elseif size(p,2) == 1
+                p = sanitize_property( p );
+                p = cell2struct( repmat( {1}, [numel(p) 1] ) , p(:,1) );
+            else
+                warning(['Format of properties for matrix ''%s'' is wrong, '...
+                        'and thus skipped.'],  matrix_ID{1} );
+                continue;
+            end
+        elseif isstruct(p)
+            % do nothing
         end
-        properties = [properties; {p}];  %#ok<AGROW>
+        properties = [properties; p];  %#ok<AGROW>
     end
 
     % Add property 'built-in' for the built-in matrices.
     for i = 1:numel(matrix_IDs)
-       if any(startsWith(matrix_IDs{i}, big))
-           properties{i} = [properties{i}; 'built-in'];  %#ok<AGROW>
+       if any(startsWith(matrix_IDs{i}, built_in_groups()))
+           properties{i}.built_in = true;  %#ok<AGROW>
        end
     end
-
-    properties = sanitize_property( properties );
 end
 
 function [pm,im] = scan_prop_map(group_IDs, root_path)
@@ -187,16 +193,20 @@ function pm = unique_pm( pm )
 end
 
 function properties = add_implied_properties(properties, pm, im)
+%%
     for i = 1:numel(properties)
         for j = 1:size(im,1)
-            % Find properties that can be added due to absence of some
-            % other properties.
-            if (~any(ismember(strrep(im{j, 2},'-', ''), ...
-                              strrep(properties{i}, '-', ''))) && ...
-                ~ismember(strrep(im{j, 1}, '-', ''), ...
-                          strrep(properties{i}, '-', '')) ...
-               )
-                properties{i} = [properties{i}; im{j, 1}];
+            if ~isfield(properties{i}, im{j,1})
+                add = true;
+                for f = im{j,2}
+                    if isfield(properties{i},f{1}) && ~properties{i}.(f{1})
+                       add = false;
+                       break 
+                    end
+                end
+                if add
+                    properties{i}.(im{j,1}) = true;
+                end
             end
         end
 
@@ -204,17 +214,20 @@ function properties = add_implied_properties(properties, pm, im)
         while j <= size(pm,1)
             % Find parent properties of any of the properties already
             % in the list and add them if they are not in yet.
-            if (any(ismember(strrep(properties{i}, '-', ''), ...
-                             strrep(pm{j, 2}, '-', ''))) && ...
-                ~ismember(strrep(pm{j, 1}, '-', ''), ...
-                          strrep(properties{i}, '-', ''))...
-               )
-                properties{i} = [properties{i}; pm{j, 1}];
-                j = 1;
+            if ~isfield(properties{i},pm{j,1})
+                add = false;
+                for f = pm{j,2}
+                    if isfield(properties{i},f{1}) && properties{i}.(f{1})
+                        add = true;
+                    end
+                end
+                if add
+                    properties{i}.(pm{j,1}) = true;
+                    j = 1;
+                end
             end
             j = j+1;
         end
-        properties{i} = unique(properties{i});
     end
 end
 
@@ -244,9 +257,8 @@ end
 function check_properties( matrix_IDs, properties, supported_properties )
     % Check if all the properties can be recognized.
     for i=1:numel(matrix_IDs)
-        for bad_prop = ...
-                properties{i}(~ismember(strrep(properties{i}, '-', ''), ...
-                               strrep(supported_properties, '-', '')))
+        p = fieldnames(properties{i});
+        for bad_prop = p(~ismember(p, supported_properties))
             if ~isempty(bad_prop)
                 warning('Property ''%s'' in ''%s'' is not recognized.', ...
                     bad_prop{1}, matrix_IDs{i});
@@ -319,19 +331,26 @@ function P = get_properties(matrix_ID, root_path)
 end
 
 function p = sanitize_property( p )
-    for i = 1:numel(p)
-        if iscell(p{i})
-            for j = 1:numel( p{i} )
-                p{i}{j} = lower(p{i}{j});
-                p{i}{j} = strtrim(p{i}{j});
-                p{i}{j}(p{i}{j}=='_') = '-';
-                p{i}{j}(p{i}{j}==' ') = '-';
+    if size(p, 2) == 2
+        for i = 1:size(p, 1)
+            assert(iscell(p{i,2}), 'Format of map wrong.');
+            p{i,1} = sanitize_property_worker( p{i,1} );
+            for j = 1:numel(p{i,2})
+                p{i,2}{j} = sanitize_property_worker( p{i,2}{j} );
             end
-        else
-            p{i} = lower(p{i});
-            p{i} = strtrim(p{i});
-            p{i}(p{i}=='_') = '-';
-            p{i}(p{i}==' ') = '-';
         end
+        p{i,2} = unique(p{i,2});
+    else
+        for i = 1:numel(p)
+            p{i,1} = sanitize_property_worker( p{i,1} );
+        end
+        p = unique( p );
     end
+end
+
+function p = sanitize_property_worker( p )    
+    p = lower(p);
+    p = strtrim(p);
+    p(p == '-') = '_';
+    p(p == ' ') = '_';
 end
