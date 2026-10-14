@@ -10,14 +10,19 @@ function [P,properties] = perfect_shuffle(n,p)
 %   Johns Hopkins University Press, Baltimore, Maryland, 2013.
 %   Sec. 1.2.11.
 
-properties = {'orthogonal', 'permutation'};
+properties = {'orthogonal', 'permutation','parameter-dependent'};
 if nargin == 0, P = []; return, end
 if nargin == 1
+    n = str2numt( n );
     % Choose number of piles, p.
     f = factor(n);
     p = max(f);
     if p == n, P = eye(n); return, end
+else
+    n = str2numt( n );
+    p = str2numt( p );
 end
+
 
 I = eye(n);
 P = zeros(n);

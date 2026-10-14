@@ -116,30 +116,52 @@ function varargout = anymatrix(varargin)
     
     [arg, command, varargin] = parse_input( varargin{:} );
 
-    capture_some_common_errors( arg, command, set_IDs, group_IDs, ...
-                                matrix_IDs, varargin{:} )
+    capture_some_common_errors()
 
     % Execute the specified command.
-    if startsWith('all', command)
+    if isempty( command )
+        fprintf( 'Type ``help anymatrix`` or ``anymatrix xyz``` to get help on anymatrix or topic ''xyz''.\n' );
+    elseif startsWith('all', command)
         varargout{1} = matrix_IDs;
 
     elseif startsWith('root_path', command)
+        assert(numel(varargin) == 0, ...
+               'Anymatrix command was not recognized (too many inputs).' );
         varargout{1} = root_path;
 
     elseif startsWith('contents', command)
+        assert(numel(varargin) == 2, ...
+               'Anymatrix command was not recognized (too many inputs).' );
+        assert(ismember(arg, group_IDs), ...
+               'The specified group ID was not found.');
         show_contents(arg, root_path);
 
     elseif startsWith('groups', command) && numel(varargin) == 3
-        do_git( arg, root_path, varargin{:})
+        update_git_group(arg, varargin{3}, root_path);
 
-    elseif startsWith('groups', command) && numel(varargin) <= 2
-        varargout{1} = do_groups(group_IDs, matrix_IDs, arg, varargin{:});
+    elseif startsWith('groups', command) && isempty( arg )
+        assert(numel(varargin) == 0, ...
+               'Anymatrix command was not recognized (too many inputs).' );
+        varargout{1} = group_IDs;
+
+    elseif startsWith('groups', command) && numel(varargin) == 2
+        assert(~isempty(arg), ...
+               'Anymatrix command was not recognized (too less inputs).' );
+        assert(ismember(arg, group_IDs), ...
+               'The specified group ID was not found.');
+        varargout{1} = matrix_IDs(contains(matrix_IDs, [arg, '/']));
 
     elseif startsWith('help', command)
-        do_help(arg)
+        if isempty( arg )
+            help anymatrix
+        else
+            do_help(arg, matrix_IDs)
+        end
 
     elseif startsWith('lookfor', command)
-        do_lookfor(arg, matrix_IDs, root_path)
+        assert(~isempty(arg), ...
+               'Anymatrix command was not recognized (too less inputs).' );
+        varargout{1} = lookfor_term(arg, matrix_IDs, root_path);
 
     % we check 'properties' before 'path',
     % so that 'p' becomes an abbreviation for 'properties'
@@ -157,13 +179,18 @@ function varargout = anymatrix(varargin)
         varargout{1} = set_IDs;
 
     elseif startsWith('sets', command)
+        assert(ismember(arg, set_IDs), ...
+               'ID of the specified set was not found.');
         [varargout{1:2}] = do_sets(root_path, arg);
 
     elseif startsWith('test', command)
+        assert(ismember(arg, group_IDs), ...
+               'The specified group ID was not found.');
         do_test(group_IDs, arg, root_path)
 
     else
-        [varargout{1:nargout}] = generate_matrix(command, varargin{2:end});
+        [varargout{1:nargout}] = generate_matrix(command, matrix_IDs, ...
+                                                 varargin{2:end});
 
     end
 
@@ -177,7 +204,8 @@ function add_to_path(root_path)
         added = true;
         addpath(root_path);
         addpath([root_path, '/sets']);
-        addpath([root_path, '/testing']);    
+        addpath([root_path, '/testing']);
+        fprintf( 'Anymatrix installed. Type `savepath` to make the installation permament.\n' );
     end
 end
 
@@ -188,42 +216,26 @@ function str = do_path(arg, root_path)
     str = [fullfile(root_path, group_name, 'private', matrix_name) '.m'];
 end
 
-function do_git( arg, root_path, varargin)
-    update_git_group(arg, varargin{3}, root_path);
-end
-
-function out =  do_groups(group_IDs, matrix_IDs, arg, varargin)
-    if isempty( arg )
-        out = group_IDs;
-    elseif numel( varargin ) == 2
-        out = matrix_IDs(contains(matrix_IDs, [arg, '/']));
-    else
-        fatal_error;
-    end
-end
-
-function do_help( arg )
+function do_help( arg, matrix_IDs )
     if isempty( arg )
         help anymatrix;
     else
-        show_matrix_help(arg);
+        show_matrix_help(arg, matrix_IDs);
     end
-end
-
-function out = do_lookfor(arg, matrix_IDs, root_path)
-    out = lookfor_term(arg, matrix_IDs, root_path);
 end
 
 function out = do_properties(matrix_IDs, properties, ...
                              supported_properties, arg, varargin )
-    if isempty( arg )
+    if isempty(arg)
         [~, I] = sort(supported_properties);
         out = supported_properties(I);
     elseif is_matrixID(arg)
+        assert(ismember(arg, matrix_IDs), 'Specified matrix ID not found.');
         [~, I] = sort(properties{strcmp(matrix_IDs, arg)});
         out = properties{strcmp(matrix_IDs, arg)}(I);
     else
-        out = search_by_properties(matrix_IDs, properties, supported_properties, varargin(2:end));
+        out = search_by_properties(matrix_IDs, properties, ...
+                                   supported_properties, varargin(2:end));
     end
 end
 
@@ -236,8 +248,8 @@ function [S, matrices] = do_sets(root_path, arg)
     % Generate matrices using parameters specified in the set.
     for index = 1:size(S,1)
         if ismissing(S{index, 2})
-            matrices{m_idx} = eval(['generate_matrix(''', ...
-                S{index, 1}, ''')']);  %#ok<AGROW>
+            matrices{m_idx} = eval(['generate_matrix(''' ...
+                S{index, 1} ''')']);  %#ok<AGROW>
         else
             matrices{m_idx} = eval(['generate_matrix(''', ...
                 S{index, 1}, ''',', num2str(S{index, 2}), ')']);  %#ok<AGROW>
@@ -261,8 +273,8 @@ end
 
 function [arg, command, varargin] = parse_input( varargin )
     arg = [];
+    command = [];
     if numel(varargin) == 0
-        command = 'help';
         return;
     end
 
@@ -297,60 +309,16 @@ function varargin = string_to_char( varargin )
 end
 
 % Capture some common errors in the arguments.
-function capture_some_common_errors(arg, command, set_IDs, group_IDs, ...
-                                    matrix_IDs, varargin)
+function capture_some_common_errors()
     % Check that MATLAB 2020b or higher is present.
     assert(~verLessThan('matlab','9.9'), ...
            'MATLAB 2020b or newer is required.');  %#ok<VERLESSMATLAB>
-
-    if is_matrixID(command)
-        assert(ismember(command, matrix_IDs), ...
-               'Specified matrix ID was not found.');
-        return;
-    end
-
-    if any(startsWith({'properties'}, command))
-        return;
-    end
-
-    assert(any(startsWith({'groups', 'sets', 'all', ...
-                           'scan', 'help', 'test', 'contents', ...
-                           'root_path','path','lookfor'}, ...
-                           command)), ...
-            'Anymatrix command was not recognized.');
-
-    assert(isempty(arg)||~any(startsWith({'lookfor','contents'}, command)), ...
-            'Please specify one more argument.');
-
-    if numel( varargin ) == 2
-        assert(ischar(arg), ...
-               'This anymatrix command requires string arguments.');
-        if startsWith({'help'}, command) || ...
-            (startsWith('properties', command) && ...
-             is_matrixID(arg))
-            assert(ismember(arg, matrix_IDs), ...
-                   'Specified matrix ID was not found.');
-            
-        elseif any(startsWith({'groups', 'contents', 'test'}, command))
-            assert(ismember(arg, group_IDs), ...
-                   'The specified group ID was not found.');
-
-        elseif startsWith('sets', command)
-            assert(ismember(arg, set_IDs), ...
-                   'ID of the specified set was not found.');
-        end
-        
-    elseif (numel(varargin) > 3 || ... 
-            numel(varargin) == 3 && ~startsWith('groups', varargin{1}) ...
-           )
-        error('Anymatrix command was not recognized (too many inputs).');
-
-    end
 end
 
 % Search for matrices that have properties, according to a specified
 % logical expression, and return their IDs.
-function IDs = search_by_properties(matrix_IDs, properties, supported_properties, expressions)
+function IDs = search_by_properties(matrix_IDs, properties, ...
+                                    supported_properties, expressions)
     expression = expressions{1};
     for i = 2:numel( expressions )
         expression = [expression ' and ' expressions{i}];  %#ok<AGROW>
@@ -363,6 +331,10 @@ function IDs = search_by_properties(matrix_IDs, properties, supported_properties
     expression = regexprep(expression, '\s+or\s+', ' | ', 'ignorecase');
     expression = regexprep(expression, '\s+not\s+', ' ~', 'ignorecase');
     expression = regexprep(expression, '\(not\s+', '(~', 'ignorecase');
+    rest = regexprep(expression, '[A-Za-z0-9_-]|(?<=[A-Za-z0-9_-])[/\\]', '');
+    assert( all(ismember(rest, [char([9 10]) '|&~() '])), ...
+            ['Given property string contains characters'...
+             'which could not be parsed: ''%s'''], rest );
     if startsWith( expression, 'not ' )
         expression = expression(4:end);
         expression(1) = '~';
@@ -376,7 +348,7 @@ function IDs = search_by_properties(matrix_IDs, properties, supported_properties
     for idx = [idx_props_start; idx_props_end]
         p = strtrim(expression(idx(1):idx(2)));
         if ~ismember(p, supported_properties)
-            warning( 'A given property is not supported: ''%s''.', p ); 
+            fprintf( 2, 'A given property is not supported: ''%s''.\n', p );
         end
         mod_prop = ['ismember(''' strrep(p, '-', ' ') ''', ' ...
                                  'strrep(matrix_properties{1}, '...
@@ -409,8 +381,9 @@ function IDs = search_by_properties(matrix_IDs, properties, supported_properties
 end
 
 % Generate a specified matrix with the given parameters, if any.
-function varargout = generate_matrix(matrix_ID, varargin)
-    slashloc = find(matrix_ID == '/');
+function varargout = generate_matrix(matrix_ID, matrix_IDs, varargin)
+    matrix_ID = find_matrixID( matrix_ID, matrix_IDs );
+    slashloc = find(matrix_ID == '/');    
     group_name = matrix_ID(1:slashloc-1);
     matrix_name = matrix_ID(slashloc+1:end);
     handle = str2func(['anymatrix_', group_name]);
@@ -422,7 +395,8 @@ function varargout = generate_matrix(matrix_ID, varargin)
 end
 
 % Display help info of a specified matrix.
-function show_matrix_help(matrix_ID)
+function show_matrix_help(matrix_ID, matrix_IDs)
+    matrix_ID = find_matrixID( matrix_ID, matrix_IDs );
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
     matrix_name = matrix_ID(slashloc+1:end);
@@ -453,8 +427,12 @@ function found_IDs = lookfor_term(term, matrix_IDs, root_path)
         end
         if contains(H, term, 'IgnoreCase', true)
             found_IDs = [found_IDs; matrix_ID];  %#ok<AGROW>
+            fprintf( '!' )
+        else
+            fprintf( '.' )
         end
     end
+    fprintf( '\n' )
 end
 
 % Display info in the Contents.m of a specified group.
@@ -480,6 +458,25 @@ end
 function ret = is_matrixID( str )
     matrix_ID_pat = '^[A-Za-z][A-Za-z0-9_-]*/[A-Za-z][A-Za-z0-9_-]*$';
     ret = ~isempty( regexp( str, matrix_ID_pat, 'once' ) );
+end
+
+function matrix_ID = find_matrixID( matrix_ID, matrix_IDs )
+    slashloc = find(matrix_ID == '/', 1);
+    if ~isempty(slashloc)
+        return
+    end
+    idx = contains(matrix_IDs, matrix_ID);
+    switch nnz(idx)
+        case 0
+            error('Specified matrix ID was not found.');
+        case 1
+            matrix_ID = matrix_IDs{idx};
+            fprintf(['Group name of matrix-ID is not given. '...
+                     'I did select: ''%s''\n'], matrix_ID );
+        otherwise
+            error(['Specified matrix ID is ambigous.'...
+                    'Add the group name to the matrix-ID.']);
+    end
 end
 
 %#ok<*MCHLP>
