@@ -117,8 +117,6 @@ function varargout = anymatrix(varargin)
     
     [command, args] = parse_input( varargin{:} );
 
-    capture_some_common_errors()
-
     % Execute the specified command.
     if isempty( command )
         fprintf( ['Type ``help anymatrix`` or ``anymatrix xyz```'...
@@ -145,7 +143,7 @@ function varargout = anymatrix(varargin)
     elseif startsWith('groups', command) && numel(args) == 2
         update_git_group(root_path, args{:});
 
-    elseif startsWith('groups', command) && isempty( args{1} )
+    elseif startsWith('groups', command) && isempty( args )
         assert(numel(args) == 0, ...
                'Anymatrix command was not recognized (too many inputs).');
         varargout{1} = group_IDs;
@@ -169,7 +167,7 @@ function varargout = anymatrix(varargin)
                                      supported_properties, args{:});
 
     elseif startsWith('path', command)
-        varargout{1} = do_path(root_path, args{:});
+        varargout{1} = do_path(root_path, matrix_IDs, args{:});
 
     elseif startsWith('scan', command) && numel(args) == 0
         scan_filesystem(root_path, true);
@@ -200,6 +198,7 @@ function add_to_path(root_path)
     if isempty(added)
         added = true;
         addpath(root_path);
+        addpath([root_path '/groups']);
         addpath([root_path '/sets']);
         addpath([root_path '/testing']);
         fprintf(['Anymatrix installed. ' ...
@@ -207,11 +206,15 @@ function add_to_path(root_path)
     end
 end
 
-function str = do_path(root_path, arg)
-    slashloc = find(arg == '/');
-    group_name = arg(1:slashloc-1);
-    matrix_name = arg(slashloc+1:end);
-    str = [fullfile(root_path, group_name, 'private', matrix_name) '.m'];
+function str = do_path(root_path, matrix_IDs, matrix_ID)
+    [~, group_name, matrix_name] = find_matrixID( matrix_ID, matrix_IDs );
+    if strcmp('gallery', group_name)
+        str = which(['private/' matrix_name]);
+    elseif strcmp('matlab', group_name)
+        str = which(matrix_name);
+    else
+        str = [root_path '/groups/' group_name '/private/' matrix_name '.m'];
+    end
 end
 
 function do_help( matrix_IDs, varargin )
@@ -324,13 +327,6 @@ function varargin = string_to_char( varargin )
     end
 end
 
-% Capture some common errors in the arguments.
-function capture_some_common_errors()
-    % Check that MATLAB 2020b or higher is present.
-    assert(~verLessThan('matlab','9.9'), ...
-           'MATLAB 2020b or newer is required.');  %#ok<VERLESSMATLAB>
-end
-
 % Search for matrices that have properties, according to a specified
 % logical expression, and return their IDs.
 function IDs = search_by_properties(matrix_IDs, properties, ...
@@ -431,11 +427,11 @@ function show_matrix_help(matrix_ID, matrix_IDs)
     [matrix_ID, group_name, matrix_name] = find_matrixID( matrix_ID, ...
                                                           matrix_IDs );
     if strcmp('gallery', group_name)
-        help(['private/', matrix_name]);
+        help(['private/' matrix_name]);
     elseif strcmp('matlab', group_name)
         help(matrix_name);
     else
-        help(replace(matrix_ID, '/', '/private/'));
+        help(replace(matrix_ID, '/groups/', '/private/'));
     end
 end
 
@@ -449,7 +445,7 @@ function found_IDs = lookfor_term(matrix_IDs, root_path, term)
         slashloc = find(matrix_ID == '/');
         group_name = matrix_ID(1:slashloc-1);
         matrix_name = matrix_ID(slashloc+1:end);
-        path_to_mat = [root_path '/' group_name '/private/' matrix_name];
+        path_to_mat = [root_path '/groups/' group_name '/private/' matrix_name];
         if strcmp('gallery', group_name)
             H = help(['private/' matrix_name]);
         elseif strcmp('matlab', group_name)
@@ -471,9 +467,9 @@ end
 function show_contents(group_IDs, root_path, group_ID)
     assert(ismember(group_ID, group_IDs), ...
            'The specified group ID was not found.');
-    assert(isfile([root_path '/' group_ID '/private/Contents.m']), ...
+    assert(isfile([root_path '/groups/' group_ID '/private/Contents.m']), ...
            'No Contents.m exists for that group.');
-    type([root_path '/' group_ID '/private/Contents.m'])
+    type([root_path '/groups/' group_ID '/private/Contents.m'])
 end
 
 function g = read_groups(group_IDs, matrix_IDs, group_ID)
@@ -491,7 +487,7 @@ end
 function run_group_tests(group_ID, root_path)
     handle = str2func(['anymatrix_' group_ID]);
     test_func = 'test_run';
-    if isfile([root_path '/' group_ID '/private/' test_func '.m'])
+    if isfile([root_path '/groups/' group_ID '/private/' test_func '.m'])
         handle(test_func);
     else
         fprintf('Group %s does not contain any tests. \n', group_ID);
@@ -504,38 +500,37 @@ function ret = is_matrixID(str)
 end
 
 function [matrix_ID, group_name, matrix_name] = find_matrixID( matrix_ID, matrix_IDs, do_error )
-    group_name = '';
-    matrix_name = '';
     if nargin <= 2
         do_error = 1;
     end
     slashloc = find(matrix_ID == '/', 1);
     if ~isempty(slashloc)  && ~isequal(slashloc,1)
-        return
-    end
-    idx = contains(matrix_IDs, matrix_ID);
-    switch nnz(idx)
-        case 0
-            str = 'Specified matrix ID was not found.';
-            if do_error
-                error(str);
-            else
-                matrix_ID = [];
-            end
-        case 1
-            matrix_ID = matrix_IDs{idx};
-            if do_error
-                fprintf(['Group name of matrix-ID is not given. '...
-                         'I did select: ''%s''\n'], matrix_ID );
-            end
-        otherwise
-            str = ['Specified matrix ID is ambigous.'...
-                   'Add the group name to the matrix-ID.'];
-            if do_error
-                error(str);
-            else
+        % do nothing
+    else
+        idx = contains(matrix_IDs, matrix_ID);
+        switch nnz(idx)
+            case 0
+                str = 'Specified matrix ID was not found.';
+                if do_error
+                    error(str);
+                else
+                    matrix_ID = [];
+                end
+            case 1
                 matrix_ID = matrix_IDs{idx};
-            end
+                if do_error
+                    fprintf(['Group name of matrix-ID is not given. '...
+                             'I did select: ''%s''\n'], matrix_ID );
+                end
+            otherwise
+                str = ['Specified matrix ID is ambigous.'...
+                       'Add the group name to the matrix-ID.'];
+                if do_error
+                    error(str);
+                else
+                    matrix_ID = matrix_IDs{idx};
+                end
+        end
     end
 
     slashloc = find(matrix_ID == '/');

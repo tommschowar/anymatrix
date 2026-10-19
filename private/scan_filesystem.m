@@ -52,34 +52,31 @@ end
 
 % Scan the root folder and obtain the group IDs.
 function IDs = scan_groups( root_path )
-    contents = dir(root_path);
+    contents = dir([root_path '/groups']);
     IDs = {};
     for k = 1:numel(contents)
         if contents(k).isdir && is_group_dir(contents(k).name, root_path)
-            IDs{end+1} = contents(k).name;  %#ok<AGROW>
-            addpath([root_path '/' contents(k).name]);
+            IDs{end+1,1} = contents(k).name;  %#ok<AGROW>
+            addpath([root_path '/groups/' contents(k).name]);
         end
     end
-    IDs = IDs.';
 end
 
 % Scan the group folders and obtain the matrix IDs.
 function matrix_IDs = scan_matrices(group_IDs, root_path)
     matrix_IDs = {};
     for group_ID = group_IDs.'
-        path_to_group = [root_path, '/', group_ID{1}, '/private/'];
-        mfiles = dir([path_to_group, '*.m']);
+        path_to_group = [root_path '/groups/' group_ID{1}, '/private/'];
+        mfiles = dir([path_to_group '*.m']);
         for mfile = mfiles.'
             % Find which .m files are matrix-generating files.
-            mfile_contents = fileread([path_to_group, mfile.name]);
-            if (contains(mfile_contents, 'properties = {') || ...
-                contains(mfile_contents, 'properties= {') || ...
-                contains(mfile_contents, 'properties ={') || ...
-                contains(mfile_contents, 'properties={') ...
-               )
+            mfile_contents = fileread([path_to_group mfile.name]);
+            if ~isempty( regexp( mfile_contents, ...
+                                 '^\s*function\s.+properties.*=.*', ...
+                                 'once', 'dotexceptnewline' ) )
                 matrix_IDs = [
                     matrix_IDs; 
-                    [group_ID{1}, '/', extractBefore(mfile.name, '.m')]
+                    [group_ID{1} '/' extractBefore(mfile.name, '.m')]
                     ];  %#ok<AGROW>
             end
         end
@@ -88,7 +85,7 @@ function matrix_IDs = scan_matrices(group_IDs, root_path)
         % add them if they are not in yet from the M-files.
         format_check = @(x) size(x,2)==2;
         filename = 'am_properties';  % without '.m'
-        if isfile([path_to_group, filename '.m'])
+        if isfile([path_to_group filename '.m'])
             handle = str2func(['anymatrix_', group_ID{1}]);
             P = handle(filename);
             if ~format_check(P)
@@ -146,9 +143,9 @@ function [pm,im] = scan_prop_map(group_IDs, root_path)
     format_check = @(x) iscell(x) && size(x,2)==2;
     filename = 'am_prop_map';  % without '.m'
     for group_ID = group_IDs.'
-        path_to_group = [root_path, '/', group_ID{1}, '/private/'];
+        path_to_group = [root_path '/groups/' group_ID{1} '/private/'];
         if isfile([path_to_group filename '.m'])
-            handle = str2func(['anymatrix_', group_ID{1}]);
+            handle = str2func(['anymatrix_' group_ID{1}]);
             pm_am = handle(filename);
             if ~format_check(pm_am)
                 warning( ['File ''%s.m'' of group ''%s'' cannot be interpreted, ' ...
@@ -165,9 +162,9 @@ function [pm,im] = scan_prop_map(group_IDs, root_path)
     format_check = @(x) iscell(x) && size(x,2)==2;
     filename = 'am_inv_prop_map';  % without '.m'
     for group_ID = group_IDs.'
-        path_to_group = [root_path, '/', group_ID{1}, '/private/'];
+        path_to_group = [root_path '/groups/' group_ID{1}, '/private/'];
         if isfile([path_to_group filename '.m'])
-            handle = str2func(['anymatrix_', group_ID{1}]);
+            handle = str2func(['anymatrix_' group_ID{1}]);
             im_am = handle(filename);
             if ~format_check(im_am)
                 warning( ['File ''%s.m'' of group ''%s'' cannot be interpreted,' ...
@@ -238,9 +235,9 @@ function supported_properties = scan_supported_properties(group_IDs, root_path)
     format_check = @(x) iscell(x) && size(x,2)==1;
     filename = 'am_prop_list';  % without '.m'
     for group_ID = group_IDs.'
-        path_to_group = [root_path, '/', group_ID{1}, '/private/'];
-        if isfile([path_to_group, filename '.m'])
-            handle = str2func(['anymatrix_', group_ID{1}]);
+        path_to_group = [root_path '/groups/' group_ID{1}, '/private/'];
+        if isfile([path_to_group filename '.m'])
+            handle = str2func(['anymatrix_' group_ID{1}]);
             pl_am = handle(filename);
             if ~format_check(pl_am)
                 warning( ['File ''%s.m'' of group ''%s'' cannot be interpreted,' ...
@@ -273,25 +270,19 @@ end
 % Group directories have one private/ directory and one file named
 % anymatrix_<dir_name>.m where <dir_name> is the directory name.
 function out = is_group_dir(directory, root_path)
-    % Check dir is not current or previous directories '.' and '..',
-    % and check dir has two files additionally to '.' and '..'.
-    if (any(strcmp(directory, {'.', '..'})) || ...
-        numel(dir([root_path '/' directory])) ~= 4 ...
-       )
-        out = false;
-    else
-        % Check dir has a 'private' directory and a file
-        % anymatrix_<dir_name>.
-        out = ~isempty(dir([root_path '/' directory '/private/'])) && ...
-              ~isempty(dir([root_path '/' directory '/anymatrix_' directory '.m']));
-    end
+    % Check dir has a 'private' directory
+    % and a file anymatrix_<dir_name>.
+    % and is not '.' or '..'
+    out = ~any(strcmp(directory, {'.', '..'})) && ...
+          ~isempty(dir([root_path '/groups/' directory '/private/'])) && ...
+          ~isempty(dir([root_path '/groups/' directory '/anymatrix_' directory '.m']));
 end
 
 % Fetch the properties of a specified matrix.
 function P = get_properties(matrix_ID, root_path)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
-    path_to_group = [root_path, '/', group_name, '/private/'];
+    path_to_group = [root_path '/groups/' group_name '/private/'];
     matrix_name = matrix_ID(slashloc+1:numel(matrix_ID));
     handle = str2func(['anymatrix_' group_name]);
     P = {};
