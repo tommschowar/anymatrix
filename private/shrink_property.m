@@ -8,6 +8,7 @@ function p = shrink_property(p)
         for fn = fieldnames(p)'
             st.(shrink_property(fn{1})) = p.(fn{1});
         end
+        p = st;
     else
         p = shrink_property_worker(p);
     end
