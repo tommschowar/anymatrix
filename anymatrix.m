@@ -157,6 +157,9 @@ function varargout = anymatrix(varargin)
     elseif startsWith('help', command)
         do_help(matrix_IDs, args{:})
 
+    elseif startsWith('edit', command)
+        do_edit(matrix_IDs, args{:})
+
     elseif startsWith('lookfor', command)
         varargout{1} = lookfor_term(matrix_IDs, root_path, args{:});
 
@@ -221,7 +224,33 @@ function do_help( matrix_IDs, varargin )
     if numel( varargin ) == 0
         help anymatrix;
     elseif numel( varargin ) == 1 %#ok<ISCL>
-        show_matrix_help(varargin{1}, matrix_IDs);
+        [matrix_ID, group_name, matrix_name] = find_matrixID( varargin{1}, ...
+                                                              matrix_IDs );
+        if strcmp('gallery', group_name)
+            help(['private/' matrix_name]);
+        elseif strcmp('matlab', group_name)
+            help(matrix_name);
+        else
+            help(['groups/' replace(matrix_ID, '/', '/private/')]);
+        end
+    else
+        error('Anymatrix command was not recognized.');
+    end
+end
+
+function do_edit( matrix_IDs, varargin )
+    if numel( varargin ) == 0
+        edit anymatrix;
+    elseif numel( varargin ) == 1 %#ok<ISCL>
+        [matrix_ID, group_name, matrix_name] = find_matrixID( varargin{1}, ...
+                                                              matrix_IDs );
+        if strcmp('gallery', group_name)
+            edit(['private/' matrix_name]);
+        elseif strcmp('matlab', group_name)
+            edit(matrix_name);
+        else
+            edit(['groups/' replace(matrix_ID, '/', '/private/')])
+        end
     else
         error('Anymatrix command was not recognized.');
     end
@@ -273,13 +302,13 @@ function [S, matrices] = do_sets(set_IDs, matrix_IDs, root_path, ...
 end
 
 function do_test(group_IDs, root_path, group_ID)
-    assert(ismember(group_ID, group_IDs), ...
-           'The specified group ID was not found.');
-    if isempty( group_ID )
+    if nargin == 2
         for id = group_IDs.'
             run_group_tests(id{1}, root_path);
         end
     else
+        assert(ismember(group_ID, group_IDs), ...
+           'The specified group ID was not found.');
         run_group_tests(group_ID, root_path);
     end
 end
@@ -294,15 +323,12 @@ function [command, args] = parse_input( varargin )
     end
 
     varargin = string_to_char( varargin{:} );
+    valid_commands = { 'properties', 'edit', 'groups', 'sets', ...
+                       'all', 'scan', 'help', 'test', ...
+                       'lookfor', 'contents'};
     if numel(varargin) >= 2 && ischar(varargin{2}) && ...
-       any(startsWith({ ...
-                'properties', ...
-                'groups', 'sets', 'all', 'scan', 'help', 'test', ...
-                'lookfor', 'contents'}, varargin{2})) && ...
-       ~any(startsWith({ ...
-                'properties', ...
-                'groups', 'sets', 'all', 'scan', 'help', 'test', ...
-                'lookfor', 'contents'}, varargin{1}))
+       any(startsWith(valid_commands, varargin{2})) && ...
+       ~any(startsWith(valid_commands, varargin{1}))
         [varargin{2},varargin{1}] = deal(varargin{1},varargin{2});
     end
 
@@ -385,7 +411,7 @@ function IDs = search_by_properties(matrix_IDs, properties, ...
         if ~ismember(p, supported_properties)
             fprintf( 2, 'A given property is not supported: ''%s''.\n', p );
         end
-        mod_prop = ['(isfield(mp, ''' p ''') && all(mp.' p '))'];
+        mod_prop = ['(isfield(mp, ''' p ''') && ~isfalse(mp.' p '))'];
         trunc_exp = expression(ind:end);
         % Find where the property is in the expression.
         prop_index = strfind(trunc_exp, p);
@@ -422,19 +448,6 @@ function varargout = generate_matrix(matrix_ID, matrix_IDs, varargin)
     end
 end
 
-% Display help info of a specified matrix.
-function show_matrix_help(matrix_ID, matrix_IDs)
-    [matrix_ID, group_name, matrix_name] = find_matrixID( matrix_ID, ...
-                                                          matrix_IDs );
-    if strcmp('gallery', group_name)
-        help(['private/' matrix_name]);
-    elseif strcmp('matlab', group_name)
-        help(matrix_name);
-    else
-        help(replace(matrix_ID, '/groups/', '/private/'));
-    end
-end
-
 % Look for a pattern inside all matrix help comments in the collection.
 function found_IDs = lookfor_term(matrix_IDs, root_path, term)
     assert(~isempty(term), ...
@@ -467,9 +480,12 @@ end
 function show_contents(group_IDs, root_path, group_ID)
     assert(ismember(group_ID, group_IDs), ...
            'The specified group ID was not found.');
-    assert(isfile([root_path '/groups/' group_ID '/private/Contents.m']), ...
-           'No Contents.m exists for that group.');
-    type([root_path '/groups/' group_ID '/private/Contents.m'])
+    if isfile([root_path '/groups/' group_ID '/private/Contents.m'])
+        type([root_path '/groups/' group_ID '/private/Contents.m'])
+    else
+           fprintf('No Contents.m exists for that group.');
+    end
+    
 end
 
 function g = read_groups(group_IDs, matrix_IDs, group_ID)

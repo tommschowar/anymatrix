@@ -109,21 +109,6 @@ function properties = scan_properties(matrix_IDs, root_path)
     properties = {};
     for matrix_ID = matrix_IDs.'
         p = get_properties(matrix_ID{1}, root_path);
-        if iscell(p)
-            if isempty(p)
-                p = struct;
-                % do nothing
-            elseif size(p,2) == 1
-                p = sanitize_property( p );
-                p = cell2struct( repmat( {1}, [numel(p) 1] ) , p(:,1) );
-            else
-                warning(['Format of properties for matrix ''%s'' is wrong, '...
-                        'and thus skipped.'],  matrix_ID{1} );
-                continue;
-            end
-        elseif isstruct(p)
-            % do nothing
-        end
         properties = [properties; p];  %#ok<AGROW>
     end
 
@@ -132,6 +117,27 @@ function properties = scan_properties(matrix_IDs, root_path)
        if any(startsWith(matrix_IDs{i}, built_in_groups()))
            properties{i}.built_in = true;  %#ok<AGROW>
        end
+    end
+end
+
+function p = cellprop2structprop( p, matrix_ID )
+    if iscell(p)
+        if isempty(p)
+            p = struct;
+            % do nothing
+        elseif size(p,2) == 1
+            p = sanitize_property( p );
+            p = cell2struct( repmat( {1}, [numel(p) 1] ) , p(:,1) );
+        elseif size(p,1) == 1
+            p = sanitize_property( p.' );
+            p = cell2struct( repmat( {1}, [numel(p) 1] ) , p(:,1) );
+        else
+            warning(['Format of properties for matrix ''%s'' is wrong, '...
+                    'and thus skipped.'],  matrix_ID );
+            p = struct;
+        end
+    elseif isstruct(p)
+        % do nothing
     end
 end
 
@@ -196,7 +202,7 @@ function properties = add_implied_properties(properties, pm, im)
             if ~isfield(properties{i}, im{j,1})
                 add = true;
                 for f = im{j,2}
-                    if isfield(properties{i},f{1}) && ~properties{i}.(f{1})
+                    if isfield(properties{i},f{1}) && properties{i}.(f{1})
                        add = false;
                        break 
                     end
@@ -279,13 +285,13 @@ function out = is_group_dir(directory, root_path)
 end
 
 % Fetch the properties of a specified matrix.
-function P = get_properties(matrix_ID, root_path)
+function p = get_properties(matrix_ID, root_path)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
     path_to_group = [root_path '/groups/' group_name '/private/'];
     matrix_name = matrix_ID(slashloc+1:numel(matrix_ID));
     handle = str2func(['anymatrix_' group_name]);
-    P = {};
+    p = struct;
     % Get properties from the M-file of the matrix.
     mfile_path = [path_to_group matrix_name '.m'];
     if isfile(mfile_path)
@@ -293,11 +299,10 @@ function P = get_properties(matrix_ID, root_path)
         if regexp( mfile_contents, '^\s*function.*properties.*=', 'once' )
             noutputs = nargout([path_to_group matrix_name]);
             temp = {};  % get last output of function
-            [temp{1:noutputs-1},P] = handle(matrix_name);  %#ok<NASGU>
+            [temp{1:noutputs-1},p] = handle(matrix_name);  %#ok<NASGU>
         end
-        P = P.';
+        p = cellprop2structprop( p, matrix_ID );
     end
-    
 
     % Get other properties from the entry in the am_properties.m file.
     format_check = @(x) size(x,2)==2;
@@ -310,13 +315,15 @@ function P = get_properties(matrix_ID, root_path)
                     filename, path_to_group );
         else
             find_idx = ~cellfun('isempty', ...
-                                regexp(matrix_name, ...
-                                       strcat('^', ...
-                                              regexptranslate('wildcard', ...
-                                                              am_properties(:, 1)), ...
-                                              '$' ), ...
-                                       'once' ) );
-            P = [P; [am_properties{find_idx,2}]'];
+                           regexp(matrix_name, ...
+                              strcat('^', ...
+                                 regexptranslate('wildcard', ...
+                                             am_properties(:, 1)), ...
+                                 '$' ), ...
+                              'once' ) );
+            ap = am_properties{find_idx,2};
+            ap = cellprop2structprop( ap, matrix_ID );
+            p = struct_merge(p, ap);
         end
     end
 end
@@ -339,7 +346,7 @@ function p = sanitize_property( p )
     end
 end
 
-function p = sanitize_property_worker( p )    
+function p = sanitize_property_worker( p )
     p = lower(p);
     p = strtrim(p);
     p(p == '-') = '_';
