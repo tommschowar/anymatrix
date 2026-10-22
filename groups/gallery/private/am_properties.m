@@ -11,7 +11,7 @@ P = {
     'circul', {'circulant', 'toeplitz', 'normal', 'eigenvalues-explicitly-known', ...
                'parameter-dependent'}
     'clement', {'tridiagonal', 'eigenvalues-explicitly-known', 'singular values'}
-    'compar', {}
+    'compar', structp('parameter_dependent',{'sqmat'})
     'condex', {'parameter-dependent'}
     'cycol', {'rectangular', 'square', 'rank deficient', 'random'}
     'dorr', {'tridiagonal', 'diagonally dominant', 'ill conditioned', ...

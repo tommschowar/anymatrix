@@ -2,7 +2,7 @@ function A = kleinberg(n,p,q,alpha)
 
 %KLEINBERG      Generate adjacency matrix for a range dependent graph.
 %
-%   Input   n: dimension of matrix (number of nodes in lattice)
+%   Input   n: dimension of matrix (number of nodes in lattice), must be a square
 %           p: maximum distance of short-range connections. Defaults to 1.
 %           q: number of random connections to add per node. Defaults to 1.
 %           alpha: clustering exponent. Defaults to 2.

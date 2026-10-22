@@ -36,11 +36,11 @@ function varargout = anymatrix(varargin)
 %       matrix (anymatrix(matrix_id, 'help') also accepted).
 %   M = ANYMATRIX('lookfor', pattern) - returns a list of matrix IDs
 %       whose help comments contain the specified string/char pattern.
-%   ANYMATRIX('properties') - show the list of recognized properties.
-%   ANYMATRIX('properties', matrix_id) - list the properties of a
+%   SP = ANYMATRIX('properties') - show the list of supported properties.
+%   P = ANYMATRIX('properties', matrix_id) - list the properties of a
 %       specified matrix (anymatrix(matrix_id, 'properties') also
 %       accepted).
-%   M = ANYMATRIX('properties', properties) - list matrices having
+%   [M, P] = ANYMATRIX('properties', properties) - list matrices having
 %       the specified properties.
 %   M = ANYMATRIX('root_path') - returns the root path of anymatrix
 %   ANYMATRIX('scan') - force a scan of the file system.
@@ -119,7 +119,7 @@ function varargout = anymatrix(varargin)
 
     % Execute the specified command.
     if isempty( command )
-        fprintf( ['Type ``help anymatrix`` or ``anymatrix xyz```'...
+        fprintf( ['Type ``anymatrix help`` or ``anymatrix help xyz```'...
                   'to get help on anymatrix or topic ''xyz''.\n'] );
 
     elseif startsWith('all', command) && numel(args) == 0
@@ -165,9 +165,12 @@ function varargout = anymatrix(varargin)
 
     % we check 'properties' before 'path',
     % so that 'p' becomes an abbreviation for 'properties'
-    elseif startsWith('properties', command)
-        varargout{1} = do_properties(matrix_IDs, properties, ...
-                                     supported_properties, args{:});
+    elseif startsWith('properties', command) && numel(args) == 0
+        varargout{1} = supported_properties;
+
+    elseif startsWith('properties', command) && numel(args) >= 1
+        [varargout{1}, varargout{2}] = get_properties(matrix_IDs, ...
+                                    properties, supported_properties, args{:});        
 
     elseif startsWith('path', command)
         varargout{1} = do_path(root_path, matrix_IDs, args{:});
@@ -256,24 +259,24 @@ function do_edit( matrix_IDs, varargin )
     end
 end
 
-function out = do_properties(matrix_IDs, properties, ...
-                             supported_properties, varargin)
-    if isempty(varargin)
-        [~, I] = sort(supported_properties);
-        out = supported_properties(I);
-    elseif is_matrixID(varargin{1})
+function [out1, out2] = get_properties(matrix_IDs, properties, ...
+                                       supported_properties, varargin)
+    if is_matrixID(varargin{1})
         assert(ismember(varargin{1}, matrix_IDs), ...
                'Specified matrix ID not found.');
-        out = properties{strcmp(matrix_IDs, varargin{1})};
+        out1 = properties{strcmp(matrix_IDs, varargin{1})};
+        out2 = [];
     elseif varargin{1}(1) == '/' && ...
            ischar( find_matrixID(varargin{1}, matrix_IDs, 0 ) )
         matrix_ID = find_matrixID(varargin{1}, matrix_IDs);
-        out = properties{strcmp(matrix_IDs, matrix_ID)};
+        out1 = properties{strcmp(matrix_IDs, matrix_ID)};
+        out2 = [];
     else
-        out = search_by_properties(matrix_IDs, properties, ...
-                                   supported_properties, varargin(1:end));
+        [out1, out2] = search_by_properties(matrix_IDs, properties, ...
+                           supported_properties, varargin(1:end));
     end
 end
+
 
 function [S, matrices] = do_sets(set_IDs, matrix_IDs, root_path, ...
                                  set)  %#ok<INUSD>
@@ -318,6 +321,7 @@ end
 
 function [command, args] = parse_input( varargin )
     command = [];
+    args = {};
     if numel(varargin) == 0
         return;
     end
@@ -355,7 +359,7 @@ end
 
 % Search for matrices that have properties, according to a specified
 % logical expression, and return their IDs.
-function IDs = search_by_properties(matrix_IDs, properties, ...
+function [IDs, props] = search_by_properties(matrix_IDs, properties, ...
                                     supported_properties, expressions)
     supported_properties = shrink_property(supported_properties);
     expression = expressions{1};
@@ -427,12 +431,14 @@ function IDs = search_by_properties(matrix_IDs, properties, ...
 
     % Find matrices whose properties satisfy the specified logical expression.
     k = 0;
+    props = {};
     for matrix_properties = properties.'
         mp = shrink_property(matrix_properties{1});  %#ok<NASGU>
         k = k + 1;
         % Test if the expression is true for this matrix and add it's ID.
         if eval(new_expression)
             IDs = [IDs; matrix_IDs{k}];  %#ok<AGROW>
+            props = [props; matrix_properties{1}];
         end
     end
 end
