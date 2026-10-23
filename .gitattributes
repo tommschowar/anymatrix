@@ -1,0 +1,5 @@
+* text=auto
+*.m text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.bib text eol=lf
