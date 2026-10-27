@@ -244,7 +244,10 @@ end
 function do_edit( matrix_IDs, varargin )
     if numel( varargin ) == 0
         edit anymatrix;
-    elseif numel( varargin ) == 1 %#ok<ISCL>
+    else
+        if numel( varargin ) > 1
+            warning('Additional arguments to call of ''edit'' are discarded.');
+        end
         [matrix_ID, group_name, matrix_name] = find_matrixID( varargin{1}, ...
                                                               matrix_IDs );
         if strcmp('gallery', group_name)
@@ -254,9 +257,8 @@ function do_edit( matrix_IDs, varargin )
         else
             edit(['groups/' replace(matrix_ID, '/', '/private/')])
         end
-    else
-        error('Anymatrix command was not recognized.');
     end
+    
 end
 
 function [out1, out2] = get_properties(matrix_IDs, properties, ...
