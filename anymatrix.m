@@ -227,8 +227,8 @@ function do_help( matrix_IDs, varargin )
     if numel( varargin ) == 0
         help anymatrix;
     elseif numel( varargin ) == 1 %#ok<ISCL>
-        [matrix_ID, group_name, matrix_name] = find_matrixID( varargin{1}, ...
-                                                              matrix_IDs );
+        [matrix_ID, group_name, matrix_name] = find_matrixID( ...
+            varargin{1}, matrix_IDs, false );
         if strcmp('gallery', group_name)
             help(['private/' matrix_name]);
         elseif strcmp('matlab', group_name)
@@ -548,7 +548,7 @@ function [matrix_ID, group_name, matrix_name] = find_matrixID( matrix_ID, matrix
                 end
             otherwise
                 str = ['Specified matrix ID is ambigous.'...
-                       'Add the group name to the matrix-ID.'];
+                       'Add the group/matrix name to the matrix-ID.'];
                 if do_error
                     error(str);
                 else
