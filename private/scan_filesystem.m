@@ -1,20 +1,32 @@
 % Top level function for scanning the files.
-function [set_IDs, group_IDs, matrix_IDs, properties, ...
-          supported_properties] = scan_filesystem(root_path)
+function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = scan_filesystem( root_path, rescan )
+%
+
+% Changelog:    tommsch,    2026-10-01,     Allow wildcards in am_properties.m to define properties for multiple files
+%                                           Slightly different (and more robust) parsing of the "properties" string in files to determine whether it is a "matrix-file"
+%                                           Allow placing `am_prop_list.m`,`am_prop_map.m`,`am_inv_prop_map.m` files in private folder to read additional matrix properties
+
+
     persistent set_IDs_
     persistent group_IDs_
     persistent matrix_IDs_
     persistent properties_
     persistent supported_properties_
-    
-    if isempty(set_IDs_)
+
+    if nargin <= 1 || isempty( rescan )
+        rescan = false;
+    end
+
+    if isempty(set_IDs_) || rescan
         set_IDs_ = scan_sets(root_path);
         group_IDs_ = scan_groups(root_path);
         matrix_IDs_ = scan_matrices(group_IDs_, root_path);
-        supported_properties_ = scan_supported_properties(group_IDs_, ...
-                                                          root_path);
-        properties_ = scan_properties(matrix_IDs_, ...
-                                      supported_properties_, root_path);
+        properties_ = scan_properties(matrix_IDs_, root_path);
+
+        [pm,im] = scan_prop_map();
+        properties_ = add_implied_properties(properties_, pm, im);
+        supported_properties_ = prop_list();
+        check_properties(matrix_IDs_, properties_, supported_properties_)
         disp('Anymatrix scanning done.');
     end
 
@@ -62,9 +74,12 @@ function matrix_IDs = scan_matrices(group_IDs, root_path)
             if (contains(mfile_contents, 'properties = {') || ...
                 contains(mfile_contents, 'properties= {') || ...
                 contains(mfile_contents, 'properties ={') || ...
-                contains(mfile_contents, 'properties={'))
-                matrix_IDs = [matrix_IDs; [group_ID{1}, '/', ...
-                    extractBefore(mfile.name, '.m')]];
+                contains(mfile_contents, 'properties={') ...
+               )
+                matrix_IDs = [
+                    matrix_IDs; 
+                    [group_ID{1}, '/', extractBefore(mfile.name, '.m')]
+                    ];
             end
         end
         
@@ -81,17 +96,9 @@ end
 
 % Get properties of a specified array of matrices in a cell array of
 % cell arrays, arranged in the same order as matrix_IDs.
-function properties = scan_properties(matrix_IDs, supported_properties, root_path)
+function properties = scan_properties(matrix_IDs, root_path)
     % List of built-in anymatrix groups.
-    built_in_groups = {
-         'contest'
-         'core'
-         'gallery'
-         'hadamard'
-         'matlab'
-         'nessie'
-         'regtools'
-         };
+    big = built_in_groups();
 
     properties = {};
     for matrix_ID = matrix_IDs.'
@@ -108,36 +115,45 @@ function properties = scan_properties(matrix_IDs, supported_properties, root_pat
            properties{i} = [properties{i}; 'built-in'];
        end
     end
+end
 
-    % Add parent properties if not specified.
-    M = prop_map();
-    I = inv_prop_map();
+function [pm,im] = scan_prop_map()
+    pm = prop_map();
+    im = inv_prop_map();
+end
+
+function [properties] = add_implied_properties(properties, pm, im)
     for i = 1:length(properties)
-        for j = 1:length(I)
+        for j = 1:length(im)
             % Find properties that can be added due to absence of some
             % other properties.
-            if ~any(ismember(strrep(lower(I{j, 2}),'-', ' '), ...
-                    strrep(lower(properties{i}), '-', ' '))) && ...
-                    ~ismember(strrep(lower(I{j, 1}), '-', ' '), ...
-                    strrep(lower(properties{i}), '-', ' '))
-                properties{i} = [properties{i}; I{j, 1}];
+            if (~any(ismember(strrep(lower(im{j, 2}),'-', ' '), ...
+                              strrep(lower(properties{i}), '-', ' '))) && ...
+                ~ismember(strrep(lower(im{j, 1}), '-', ' '), ...
+                          strrep(lower(properties{i}), '-', ' ')) ...
+               )
+                properties{i} = [properties{i}; im{j, 1}];
             end
         end
+
         j = 1;
-        while j <= length(M)
+        while j <= length(pm)
             % Find parent properties of any of the properties already
             % in the list and add them if they are not in yet.
-            if any(ismember(strrep(lower(properties{i}), '-', ' '), ...
-                            strrep(lower(M{j, 2}), '-', ' '))) && ...
-                ~ismember(strrep(lower(M{j, 1}), '-', ' '), ...
-                          strrep(lower(properties{i}), '-', ' '))
-                properties{i} = [properties{i}; M{j, 1}];
-                j=1;
+            if (any(ismember(strrep(lower(properties{i}), '-', ' '), ...
+                             strrep(lower(pm{j, 2}), '-', ' '))) && ...
+                ~ismember(strrep(lower(pm{j, 1}), '-', ' '), ...
+                          strrep(lower(properties{i}), '-', ' '))...
+               )
+                properties{i} = [properties{i}; pm{j, 1}];
+                j = 1;
             end
             j = j+1;
         end
     end
+end
 
+function check_properties( matrix_IDs, properties, supported_properties )
     % Check if all the properties can be recognized.
     for i=1:length(matrix_IDs)
         for bad_prop = ...
@@ -145,11 +161,22 @@ function properties = scan_properties(matrix_IDs, supported_properties, root_pat
                                strrep(lower(supported_properties), ...
                                '-', ' ')))
             if ~isempty(bad_prop)
-                warning('Property %s in %s is not recognized.', ...
+                warning('Property ''%s'' in ''%s'' is not recognized.', ...
                     bad_prop{1}, matrix_IDs{i});
             end
         end
     end
+end
+
+%%
+
+% Check whether `directory` folder has a 'private' folder
+% and a file anymatrix_<dir_name>
+% and is not '.' or '..'
+function out = is_group_dir(directory, root_path)
+    out = ~any(strcmp(directory, {'.', '..'})) && ...
+          ~isempty(dir([root_path '/groups/' directory '/private/'])) && ...
+          ~isempty(dir([root_path '/groups/' directory '/anymatrix_' directory '.m']));
 end
 
 % Fetch the properties of a specified matrix.
@@ -182,13 +209,4 @@ function P = get_properties(matrix_ID, root_path)
         end
     end
     P = P.';
-end
-
-% Check `directory` folder has a 'private' folder
-% and a file anymatrix_<dir_name>.
-% and is not '.' or '..'
-function out = is_group_dir(directory, root_path)
-    out = ~any(strcmp(directory, {'.', '..'})) && ...
-          ~isempty(dir([root_path '/groups/' directory '/private/'])) && ...
-          ~isempty(dir([root_path '/groups/' directory '/anymatrix_' directory '.m']));
 end
