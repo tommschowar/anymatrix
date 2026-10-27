@@ -332,23 +332,13 @@ end
         cd(current_folder);
     end
 
-    % Check if a folder in anymatrix root directory is a group folder.
-    % Group directories have one private/ directory and one file named
-    % anymatrix_<dir_name>.m where <dir_name> is the directory name.
+    % Check `directory` folder has a 'private' folder
+    % and a file anymatrix_<dir_name>.
+    % and is not '.' or '..'
     function out = is_group_dir(directory)
-        % Check dir is not current or previous directories '.' and '..',
-        % and check dir has two files additionally to '.' and '..'.
-        if (any(strcmp(directory, {'.', '..'})) || ...
-                (length(dir(strcat(root_path, '/groups/', directory)))) ~= 4)
-            out = false;
-        else
-            % Check dir has a 'private' directory and a file
-            % anymatrix_<dir_name>.
-            out = ~(isempty(dir(strcat(root_path, '/groups/', directory, ...
-                                       '/private/'))) || ...
-                    isempty(dir(strcat(root_path, '/groups/', directory, ...
-                                       '/anymatrix_', directory, '.m'))));
-        end
+        out = ~any(strcmp(directory, {'.', '..'})) && ...
+              ~isempty(dir([root_path '/groups/' directory '/private/'])) && ...
+              ~isempty(dir([root_path '/groups/' directory '/anymatrix_' directory '.m']));
     end
 
     % Scan the root folder and obtain the group IDs.
