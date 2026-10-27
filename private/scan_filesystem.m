@@ -22,7 +22,6 @@ function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = sc
         group_IDs_ = scan_groups(root_path);
         matrix_IDs_ = scan_matrices(group_IDs_, root_path);
         properties_ = scan_properties(matrix_IDs_, root_path);
-
         [pm,im] = scan_prop_map();
         properties_ = add_implied_properties(properties_, pm, im);
         supported_properties_ = prop_list();
@@ -42,7 +41,7 @@ function set_IDs = scan_sets( root_path )
     set_IDs = {dir(strcat(root_path, '/sets/*.txt')).name};
     
     % Remove '.txt' extensions from the IDs.
-    for k = 1:length(set_IDs)
+    for k = 1:numel(set_IDs)
         dotloc = find(set_IDs{k} == '.');
         set_IDs{k} = set_IDs{k}(1:dotloc(1)-1);
     end
@@ -110,8 +109,8 @@ function properties = scan_properties(matrix_IDs, root_path)
     end
 
     % Add property 'built-in' for the built-in matrices.
-    for i = 1:length(matrix_IDs)
-       if any(startsWith(matrix_IDs{i}, built_in_groups))
+    for i = 1:numel(matrix_IDs)
+       if any(startsWith(matrix_IDs{i}, big))
            properties{i} = [properties{i}; 'built-in'];
        end
     end
@@ -123,8 +122,8 @@ function [pm,im] = scan_prop_map()
 end
 
 function [properties] = add_implied_properties(properties, pm, im)
-    for i = 1:length(properties)
-        for j = 1:length(im)
+    for i = 1:numel(properties)
+        for j = 1:size(im,1)
             % Find properties that can be added due to absence of some
             % other properties.
             if (~any(ismember(strrep(lower(im{j, 2}),'-', ' '), ...
@@ -137,7 +136,7 @@ function [properties] = add_implied_properties(properties, pm, im)
         end
 
         j = 1;
-        while j <= length(pm)
+        while j <= size(pm,1)
             % Find parent properties of any of the properties already
             % in the list and add them if they are not in yet.
             if (any(ismember(strrep(lower(properties{i}), '-', ' '), ...
@@ -155,7 +154,7 @@ end
 
 function check_properties( matrix_IDs, properties, supported_properties )
     % Check if all the properties can be recognized.
-    for i=1:length(matrix_IDs)
+    for i=1:numel(matrix_IDs)
         for bad_prop = ...
                 properties{i}(~ismember(strrep(lower(properties{i}), '-', ' '), ...
                                strrep(lower(supported_properties), ...

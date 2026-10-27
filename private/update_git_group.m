@@ -52,8 +52,7 @@ function update_git_group(group_ID, repo_ID, root_path)
         end
     end
     % Rescan the anymatrix file system.
-    [set_IDs, group_IDs, matrix_IDs, properties] = ...
-        scan_filesystem(root_path);
+    scan_filesystem(root_path, true);
 end
 
 % Run function if present.
