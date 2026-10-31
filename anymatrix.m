@@ -117,68 +117,45 @@ capture_some_common_errors( arg, command, set_IDs, group_IDs, ...
 % Execute the specified command.
 if startsWith('all', command)
     varargout{1} = matrix_IDs;
+
 elseif startsWith('contents', command)
     show_contents(arg, root_path);
+
+elseif startsWith('groups', command) && numel(varargin) == 3
+    update_git_group(arg, varargin{3}, root_path)
+
+elseif startsWith('groups', command) && numel(varargin) == 1
+    varargout{1} = group_IDs;
+
+elseif startsWith('groups', command) && numel(varargin) == 2
+    varargout{1} = matrix_IDs(contains(matrix_IDs, ...
+                                       strcat(arg, '/')));
+
 elseif startsWith('groups', command)
-    if isempty(arg)
-        varargout{1} = group_IDs;
-    elseif (nargin == 2)
-        varargout{1} = matrix_IDs(contains(matrix_IDs, ...
-                                           strcat(arg, '/')));
-    else
-        update_git_group(arg, varargin{3}, root_path);
-    end
+    error('Anymatrix command was not recognized.');
+
 elseif startsWith('help', command)
-    if isempty(arg)
-        help anymatrix;
-    else
-        show_matrix_help(arg);
-    end
+    do_help(arg)
+
 elseif startsWith('lookfor', command)
     varargout{1} = lookfor_term(arg, root_path);
+
 elseif startsWith('properties', command)
-    if isempty(arg)
-        [~, I] = sort(lower(supported_properties));
-        varargout{1} = supported_properties(I);
-    elseif  is_matrixID( arg )
-        [~, I] = sort(lower(properties{strcmp(matrix_IDs, arg)}));
-        varargout{1} = properties{strcmp(matrix_IDs, arg)}(I);
-    else
-        varargout{1} = search_by_properties(matrix_IDs, properties, arg);
-    end
+    varargout{1} = do_properties(matrix_IDs, properties, ...
+                                 supported_properties, arg, varargin{2:end} );
+
 elseif startsWith('scan', command)
     scan_filesystem(root_path, true);
-    return;
-elseif startsWith('sets', command)
-    if isempty(arg)
+
+elseif startsWith('sets', command) && isempty(arg)
         varargout{1} = set_IDs;
-    else
-        S = readcell( ...
-            strcat(root_path, '/sets/', arg, '.txt'), ...
-            'Delimiter', ':', 'CommentStyle', '%', ...
-            'Whitespace', ' \n');
-        varargout{1} = S;
-        out_ind = 2;
-        % Generate matrices using parameters specified in the set.
-        for index = 1:length(S)
-            if (ismissing(S{index, 2}))
-                varargout{out_ind} = eval(strcat('generate_matrix(''', ...
-                    S{index, 1}, ''')'));
-            else
-                varargout{out_ind} = eval(strcat('generate_matrix(''', ...
-                    S{index, 1}, ''',', num2str(S{index, 2}), ')'));
-            end
-            out_ind = out_ind + 1;
-        end
-    end
+
+elseif startsWith('sets', command)
+    [varargout{1:2}] = do_sets(root_path, arg);
+
+
 elseif startsWith('test', command)
-    if isempty(arg)
-        for group = group_IDs.'
-            run_group_tests(group{1}, root_path);
-        end
-    else
-        run_group_tests(arg, root_path);
-    end
+    do_test(group_IDs, arg, root_path)
 else
     [varargout{1:nargout}] = generate_matrix(command, varargin{2:nargin});
 end
@@ -196,6 +173,59 @@ function add_to_path(root_path)
         addpath([root_path, '/testing']);    
     end
 end
+function do_help( arg )
+    if isempty(arg)
+        help anymatrix;
+    else
+        show_matrix_help(arg);
+    end
+end
+
+function out = do_properties(matrix_IDs, properties, ...
+                             supported_properties, arg, varargin )
+    if isempty(arg)
+        [~, I] = sort(lower(supported_properties));
+        out = supported_properties(I);
+    elseif  is_matrixID( arg )
+        [~, I] = sort(lower(properties{strcmp(matrix_IDs, arg)}));
+        out = properties{strcmp(matrix_IDs, arg)}(I);
+    else
+        out = search_by_properties(matrix_IDs, properties, varargin{1});
+    end
+end
+
+function [S, matrices] = do_sets(root_path, arg)
+    S = readcell( ...
+        strcat(root_path, '/sets/', arg, '.txt'), ...
+        'Delimiter', ':', 'CommentStyle', '%', ...
+        'Whitespace', ' \n');
+    out_ind = 2;
+    matrices = {};
+    % Generate matrices using parameters specified in the set.
+    for index = 1:size(S,1)
+        if (ismissing(S{index, 2}))
+            matrices{out_ind} = eval(strcat('generate_matrix(''', ...
+                S{index, 1}, ''')'));
+        else
+            matrices{out_ind} = eval(strcat('generate_matrix(''', ...
+                S{index, 1}, ''',', num2str(S{index, 2}), ')'));
+        end
+        out_ind = out_ind + 1;
+    end
+end
+
+function do_test(group_IDs, arg, root_path)
+    if isempty( arg )
+        for group_ID = group_IDs.'
+            run_group_tests(group_ID{1}, root_path);
+        end
+    else
+        run_group_tests(arg, root_path);
+    end
+end
+
+
+%%
 
 function [arg, command, varargin] = parse_input( varargin )
     arg = [];
