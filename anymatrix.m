@@ -127,12 +127,6 @@ end
 % Flag used for performing the first scan of the file structure.
 persistent files_scanned
 
-persistent set_IDs
-persistent group_IDs
-persistent matrix_IDs
-persistent properties
-persistent supported_properties
-
 % Get the directory containing the anymatrix.m file.
 root_path = fileparts(strcat(mfilename('fullpath'), '.m'));
 
@@ -143,12 +137,10 @@ if isempty(files_scanned)
     addpath(strcat(root_path));
     addpath(strcat(root_path, '/sets'));
     addpath(strcat(root_path, '/testing'));
-    supported_properties = prop_list();
-    [set_IDs, group_IDs, matrix_IDs, properties] = ...
-        scan_filesystem(supported_properties,root_path);
     files_scanned = 1;
-    disp('Automatic anymatrix scanning done.');
 end
+[set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = ...
+    scan_filesystem( root_path );
 
 if nargin == 0
     help('anymatrix.m');
@@ -245,10 +237,8 @@ elseif startsWith('properties', command)
         varargout{1} = search_by_properties(matrix_IDs, properties, arg);
     end
 elseif startsWith('scan', command)
-    supported_properties = prop_list();
-    [set_IDs, group_IDs, matrix_IDs, properties] = ...
-        scan_filesystem(supported_properties,root_path);
-    disp('Anymatrix scanning done.');
+    scan_filesystem(root_path, true);
+    return;
 elseif startsWith('sets', command)
     if (nargin == 1)
         varargout{1} = set_IDs;
@@ -286,23 +276,46 @@ end
 end
 
 % Top level function for scanning the files.
-function [c, g, m, p] = scan_filesystem(supported_properties,root_path)
-    c = scan_sets(root_path);
-    g = scan_groups(root_path);
-    m = scan_matrices(g,root_path);
-    p = scan_properties(m,supported_properties,root_path);
+function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = scan_filesystem( root_path, rescan )
+    persistent set_IDs_
+    persistent group_IDs_
+    persistent matrix_IDs_
+    persistent properties_
+    persistent supported_properties_
+
+    if nargin <= 1 || isempty( rescan )
+        rescan = false;
+    end
+
+    if isempty(set_IDs_) || rescan
+        set_IDs_ = scan_sets(root_path);
+        group_IDs_ = scan_groups(root_path);
+        matrix_IDs_ = scan_matrices(group_IDs_, root_path);
+        properties_ = scan_properties(matrix_IDs_, root_path);
+        [pm,im] = scan_prop_map();
+        properties_ = add_implied_properties(properties_, pm, im);
+        supported_properties_ = prop_list();
+        check_properties(matrix_IDs_, properties_, supported_properties_)
+        disp('Anymatrix scanning done.');
+    end
+
+    set_IDs = set_IDs_;
+    group_IDs = group_IDs_;
+    matrix_IDs = matrix_IDs_;
+    properties = properties_;
+    supported_properties = supported_properties_;
 end
 
 % Scan the sets folder and obtain the set IDs.
-function IDs = scan_sets(root_path)
-    IDs = {dir(strcat(root_path, '/sets/*.txt')).name};
+function set_IDs = scan_sets(root_path)
+    set_IDs = {dir(strcat(root_path, '/sets/*.txt')).name};
     
     % Remove '.txt' extensions from the IDs.
-    for k = 1:length(IDs)
-        dotloc = find(IDs{k} == '.');
-        IDs{k} = IDs{k}(1:dotloc(1)-1);
+    for k = 1:length(set_IDs)
+        dotloc = find(set_IDs{k} == '.');
+        set_IDs{k} = set_IDs{k}(1:dotloc(1)-1);
     end
-    IDs = IDs.';
+    set_IDs = set_IDs.';
 end
 
 % Try to run function setup() if current group has one.
@@ -336,23 +349,23 @@ function out = is_group_dir(directory, root_path)
 end
 
 % Scan the root folder and obtain the group IDs.
-function IDs = scan_groups(root_path)
+function group_IDs = scan_groups(root_path)
     contents = dir([root_path, '/groups']);
-    IDs = {};
+    group_IDs = {};
     for k = 1:length(contents)
         if contents(k).isdir && is_group_dir(contents(k).name, root_path)
-            IDs{end+1} = contents(k).name;
+            group_IDs{end+1} = contents(k).name;
             addpath(strcat(root_path, '/groups/', contents(k).name));
         end
     end
-    IDs = IDs.';
+    group_IDs = group_IDs.';
 end
 
 % Scan the group folders and obtain the matrix IDs.
-function IDs = scan_matrices(groups,root_path)
-    IDs = {};
-    for group = groups.'
-        path_to_group = [root_path, '/groups/', group{1}, '/private/'];
+function matrix_IDs = scan_matrices(group_IDs,root_path)
+    matrix_IDs = {};
+    for group_ID = group_IDs.'
+        path_to_group = [root_path, '/groups/', group_ID{1}, '/private/'];
         mfiles = dir([path_to_group, '*.m']);
         for mfile = mfiles.'
             % Find which .m files are matrix-generating files.
@@ -360,19 +373,22 @@ function IDs = scan_matrices(groups,root_path)
             if (contains(mfile_contents, 'properties = {') || ...
                 contains(mfile_contents, 'properties= {') || ...
                 contains(mfile_contents, 'properties ={') || ...
-                contains(mfile_contents, 'properties={'))
-                IDs = [IDs; [group{1}, '/', ...
-                    extractBefore(mfile.name, '.m')]];
+                contains(mfile_contents, 'properties={') ...
+               )
+                matrix_IDs = [
+                    matrix_IDs;
+                    [group_ID{1}, '/', extractBefore(mfile.name, '.m')]
+                    ];
             end
         end
         
         % Read matrix IDs that are placed in properties.m files and
         % add them if they are not in yet from the M-files.
         if (isfile(strcat(path_to_group, 'am_properties.m')))
-            handle = str2func(strcat('anymatrix_', group{1}));
+            handle = str2func(strcat('anymatrix_', group_ID{1}));
             P = handle('am_properties');
-            moreIDs = strcat(group{1}, '/', P(:,1));
-            IDs = [IDs; moreIDs(~ismember(moreIDs, IDs))];
+            moreIDs = strcat(group_ID{1}, '/', P(:,1));
+            matrix_IDs = [matrix_IDs; moreIDs(~ismember(moreIDs, matrix_IDs))];
         end
     end
 end
@@ -465,9 +481,9 @@ end
 
 % Get properties of a specified array of matrices in a cell array of
 % cell arrays, arranged in the same order as matrix_IDs.
-function P = scan_properties(matrix_IDs, supported_properties, root_path)
+function properties = scan_properties(matrix_IDs, root_path)
 % List of built-in anymatrix groups.
-    built_in_groups = {
+    big = {
          'contest'
          'core'
          'gallery'
@@ -477,55 +493,61 @@ function P = scan_properties(matrix_IDs, supported_properties, root_path)
          'regtools'
          };
 
-    P = {};
+    properties = {};
     for matrix_ID = matrix_IDs.'
         current_properties = get_properties(matrix_ID{1}, root_path);
         if size(current_properties, 2) > 1
             current_properties = current_properties';
         end
-        P = [P; {current_properties}];
+        properties = [properties; {current_properties}];
     end
 
     % Add property 'built-in' for the built-in matrices.
     for i = 1:length(matrix_IDs)
-       if any(startsWith(matrix_IDs{i}, built_in_groups))
-           P{i} = [P{i}; 'built-in'];
+       if any(startsWith(matrix_IDs{i}, big))
+           properties{i} = [properties{i}; 'built-in'];
        end
     end
+end
 
-    % Add parent properties if not specified.
-    M = prop_map();
-    I = inv_prop_map();
-    for i = 1:length(P)
-        for j = 1:length(I)
+function [pm,im] = scan_prop_map()
+    pm = prop_map();
+    im = inv_prop_map();
+end
+
+function [properties] = add_implied_properties(properties, pm, im)    
+    for i = 1:length(properties)
+        for j = 1:length(im)
             % Find properties that can be added due to absence of some
             % other properties.
-            if ~any(ismember(strrep(lower(I{j, 2}),'-', ' '), ...
-                    strrep(lower(P{i}), '-', ' '))) && ...
-                    ~ismember(strrep(lower(I{j, 1}), '-', ' '), ...
-                    strrep(lower(P{i}), '-', ' '))
-                P{i} = [P{i}; I{j, 1}];
+            if ~any(ismember(strrep(lower(im{j, 2}),'-', ' '), ...
+                    strrep(lower(properties{i}), '-', ' '))) && ...
+                    ~ismember(strrep(lower(im{j, 1}), '-', ' '), ...
+                    strrep(lower(properties{i}), '-', ' '))
+                properties{i} = [properties{i}; im{j, 1}];
             end
         end
         j = 1;
-        while j <= length(M)
+        while j <= length(pm)
             % Find parent properties of any of the properties already
             % in the list and add them if they are not in yet.
-            if any(ismember(strrep(lower(P{i}), '-', ' '), ...
-                            strrep(lower(M{j, 2}), '-', ' '))) && ...
-                ~ismember(strrep(lower(M{j, 1}), '-', ' '), ...
-                          strrep(lower(P{i}), '-', ' '))
-                P{i} = [P{i}; M{j, 1}];
+            if any(ismember(strrep(lower(properties{i}), '-', ' '), ...
+                            strrep(lower(pm{j, 2}), '-', ' '))) && ...
+                ~ismember(strrep(lower(pm{j, 1}), '-', ' '), ...
+                          strrep(lower(properties{i}), '-', ' '))
+                properties{i} = [properties{i}; pm{j, 1}];
                 j=1;
             end
             j = j+1;
         end
     end
+end
 
+function check_properties( matrix_IDs, properties, supported_properties )
     % Check if all the properties can be recognized.
     for i=1:length(matrix_IDs)
         for bad_prop = ...
-                P{i}(~ismember(strrep(lower(P{i}), '-', ' '), ...
+                properties{i}(~ismember(strrep(lower(properties{i}), '-', ' '), ...
                                strrep(lower(supported_properties), ...
                                '-', ' ')))
             if ~isempty(bad_prop)
@@ -650,8 +672,7 @@ function update_git_group(group_ID, repo_ID, root_path)
         end
     end
     % Rescan the anymatrix file system.
-    [set_IDs, group_IDs, matrix_IDs, properties] = ...
-        scan_filesystem(root_path);
+    scan_filesystem(root_path, true);
 end
 
 % Run a testsuite of a particular group.
