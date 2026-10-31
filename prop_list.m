@@ -55,6 +55,7 @@ P = {
     'skew-symmetric'
     'sparse'                % The matrix is stored in the MATLAB sparse format
     'square'
+    'symbolic'              % The matrix is stored in the MATLAB symbolic format
     'row-stochastic'        % Nonnegative with unit row sums  % renamed from 'stochastic'
     'symmetric'             % XX
     'toeplitz'
