@@ -22,12 +22,10 @@ function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = sc
         set_IDs_ = scan_sets(root_path);
         group_IDs_ = scan_groups(root_path);
         matrix_IDs_ = scan_matrices(group_IDs_, root_path);
-        properties_ = scan_properties(matrix_IDs_, root_path);
-
-        [pm,im] = scan_prop_map(group_IDs_, root_path);
-        properties_ = add_implied_properties(properties_, pm, im);
-
-        supported_properties_ = scan_supported_properties(group_IDs_, root_path);
+        [pm,im,am] = scan_prop_map(group_IDs_, root_path);
+        properties_ = scan_properties(matrix_IDs_, am, root_path);
+        properties_ = add_implied_properties(properties_, pm, im, am);
+        supported_properties_ = scan_supported_properties(group_IDs_, am, root_path);
         check_properties(matrix_IDs_, properties_, supported_properties_)
         fprintf('\bDone\n');
     end
@@ -105,11 +103,11 @@ end
 
 % Get properties of a specified array of matrices in a cell array of
 % cell arrays, arranged in the same order as matrix_IDs.
-function properties = scan_properties(matrix_IDs, root_path)
+function properties = scan_properties(matrix_IDs, am, root_path)
     % List of built-in anymatrix groups.
     properties = {};
     for matrix_ID = matrix_IDs.'
-        p = get_properties(matrix_ID{1}, root_path);
+        p = get_properties(matrix_ID{1}, am, root_path);
         properties = [properties; p];  %#ok<AGROW>
     end
 
@@ -121,16 +119,16 @@ function properties = scan_properties(matrix_IDs, root_path)
     end
 end
 
-function p = cellprop2structprop( p, matrix_ID )
+function p = cellprop2structprop( p, am, matrix_ID )
     if iscell(p)
         if isempty(p)
             p = struct;
             % do nothing
         elseif size(p,2) == 1
-            p = sanitize_property( p );
+            p = sanitize_property( p, am );
             p = cell2struct( repmat( {1}, [numel(p) 1] ) , p(:,1) );
         elseif size(p,1) == 1
-            p = sanitize_property( p.' );
+            p = sanitize_property( p.', am );
             p = cell2struct( repmat( {1}, [numel(p) 1] ) , p(:,1) );
         else
             warning(['Format of properties for matrix ''%s'' is wrong, '...
@@ -138,13 +136,15 @@ function p = cellprop2structprop( p, matrix_ID )
             p = struct;
         end
     elseif isstruct(p)
-        % do nothing
+        p = sanitize_property( p, am );
     end
 end
 
-function [pm,im] = scan_prop_map(group_IDs, root_path)
+function [pm, im, am] = scan_prop_map(group_IDs, root_path)
     pm = prop_map();
     im = inv_prop_map();
+    am = alias_prop_map();
+    am = sanitize_property( am );
 
     % Read prop-map that are placed in am_prop_map.m
     format_check = @(x) iscell(x) && size(x,2)==2;
@@ -163,7 +163,7 @@ function [pm,im] = scan_prop_map(group_IDs, root_path)
         end
     end
     pm = unique_pm( pm );
-    pm = sanitize_property( pm );
+    pm = sanitize_property( pm, am );
 
     % Read prop-map that are placed in am_inv_prop_map.m
     format_check = @(x) iscell(x) && size(x,2)==2;
@@ -182,7 +182,7 @@ function [pm,im] = scan_prop_map(group_IDs, root_path)
         end
     end
     im = unique_pm( im );
-    im = sanitize_property( im );
+    im = sanitize_property( im, am );
 end
 
 function pm = unique_pm( pm )
@@ -196,7 +196,7 @@ function pm = unique_pm( pm )
     pm = pm(idx,:);
 end
 
-function properties = add_implied_properties(properties, pm, im)
+function properties = add_implied_properties(properties, pm, im, ~)
 %%
     for i = 1:numel(properties)
         for j = 1:size(im,1)
@@ -235,7 +235,7 @@ function properties = add_implied_properties(properties, pm, im)
     end
 end
 
-function supported_properties = scan_supported_properties(group_IDs, root_path)
+function supported_properties = scan_supported_properties(group_IDs, am, root_path)
     supported_properties = prop_list();
 
     % Read properities that are placed in am_prop_list.m
@@ -255,7 +255,7 @@ function supported_properties = scan_supported_properties(group_IDs, root_path)
         end
     end
     supported_properties = unique(supported_properties);
-    supported_properties = sanitize_property(supported_properties);
+    supported_properties = sanitize_property(supported_properties, am);
 end
 
 function check_properties( matrix_IDs, properties, supported_properties )
@@ -286,7 +286,7 @@ function out = is_group_dir(directory, root_path)
 end
 
 % Fetch the properties of a specified matrix.
-function p = get_properties(matrix_ID, root_path)
+function p = get_properties(matrix_ID, am, root_path)
     slashloc = find(matrix_ID == '/');
     group_name = matrix_ID(1:slashloc-1);
     path_to_group = [root_path '/groups/' group_name '/private/'];
@@ -302,7 +302,7 @@ function p = get_properties(matrix_ID, root_path)
             temp = {};  % get last output of function
             [temp{1:noutputs-1},p] = handle(matrix_name);  %#ok<NASGU>
         end
-        p = cellprop2structprop( p, matrix_ID );
+        p = cellprop2structprop( p, am, matrix_ID );
     end
 
     % Get other properties from the entry in the am_properties.m file.
@@ -323,33 +323,62 @@ function p = get_properties(matrix_ID, root_path)
                                  '$' ), ...
                               'once' ) );
             ap = am_properties{find_idx,2};
-            ap = cellprop2structprop( ap, matrix_ID );
+            ap = cellprop2structprop( ap, am, matrix_ID );
             p = struct_merge(p, ap);
         end
     end
 end
 
-function p = sanitize_property( p )
-    if size(p, 2) == 2
+function p = sanitize_property( p, am )
+    if nargin <= 1
+        am = [];
+    end
+    if isstruct(p)
+        for name = fieldnames( p )'
+            [newname, changed] = sanitize_property_worker( name{1}, am );
+            if changed
+                p.(newname) = p.(name{1});
+                p = rmfield( p, name{1} );
+            end
+        end
+
+    elseif size(p, 2) == 2 && size(p,1) > 1 && iscell(p{1,2})
         for i = 1:size(p, 1)
             assert(iscell(p{i,2}), 'Format of map wrong.');
-            p{i,1} = sanitize_property_worker( p{i,1} );
+            p{i,1} = sanitize_property_worker( p{i,1}, am );
             for j = 1:numel(p{i,2})
-                p{i,2}{j} = sanitize_property_worker( p{i,2}{j} );
+                p{i,2}{j} = sanitize_property_worker( p{i,2}{j}, am );
             end
         end
         p{i,2} = unique(p{i,2});
-    else
+    elseif size(p,2) == 1
         for i = 1:numel(p)
-            p{i,1} = sanitize_property_worker( p{i,1} );
+            p{i} = sanitize_property_worker( p{i}, am );
         end
         p = unique( p );
+    elseif size(p,2) == 2
+        for i = 1:numel(p)
+            p{i} = sanitize_property_worker( p{i}, am );
+        end
+    else
+        error( 'Format of file is wrong.' );
     end
 end
 
-function p = sanitize_property_worker( p )
+function [p, changed] = sanitize_property_worker( p, am )
+    p_orig = p;
     p = lower(p);
     p = strtrim(p);
     p(p == '-') = '_';
     p(p == ' ') = '_';
+    if ~isempty(am)
+        for i = 1:size( am, 1 )
+            idx = strcmp( p, am(:,2) );
+            assert( nnz(idx) <= 1, 'Duplicate names occured in alias map.' );
+            if any(idx)
+                p = am{idx,1};
+            end
+        end
+    end
+    changed = ~isequal( p, p_orig );
 end

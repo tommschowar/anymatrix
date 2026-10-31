@@ -29,7 +29,6 @@ P = {
     'inverse-explicitly-known'  % The inverse of the matrix is known explicitly  % Renamed from 'inverse'
     'invertible'            % A^2 = I
     'involutory'
-    'kone'
     'matrixset'
     'M-matrix'
     'nilpotent'             % A^k = 0 for some positive integer k

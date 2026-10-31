@@ -177,7 +177,7 @@ function varargout = anymatrix(varargin)
 
     elseif startsWith('scan', command) && numel(args) == 0
         scan_filesystem(root_path, true);
-        lookfor_term(matrix_IDs, root_path, '');
+        lookfor_term(matrix_IDs, root_path, true);
 
     elseif startsWith('scan', command)
         error('Anymatrix command was not recognized.');
@@ -465,6 +465,10 @@ function found_IDs = lookfor_term(matrix_IDs, root_path, term)
         rescan = term;
     end
     help_content = scan_help( matrix_IDs, root_path, rescan );
+    if ~ischar(term)
+        return
+    end
+    
     ids = [];
     fprintf( 'The following matrices help texts contain the string ''%s'':\n', term );
     for i = 1:numel( matrix_IDs )
