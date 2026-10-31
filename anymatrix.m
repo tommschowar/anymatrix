@@ -111,11 +111,11 @@ function varargout = anymatrix(varargin)
     root_path = fileparts([mfilename('fullpath'), '.m']);
 
     add_to_path(root_path);
+    
+    [command, args] = parse_input( varargin{:} );
 
     [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = ...
         scan_filesystem( root_path );
-    
-    [command, args] = parse_input( varargin{:} );
 
     % Execute the specified command.
     if isempty( command )
@@ -177,6 +177,7 @@ function varargout = anymatrix(varargin)
 
     elseif startsWith('scan', command) && numel(args) == 0
         scan_filesystem(root_path, true);
+        lookfor_term(matrix_IDs, root_path, '');
 
     elseif startsWith('scan', command)
         error('Anymatrix command was not recognized.');
@@ -207,8 +208,8 @@ function add_to_path(root_path)
         addpath([root_path '/groups']);
         addpath([root_path '/sets']);
         addpath([root_path '/testing']);
-        fprintf(['Anymatrix installed. ' ...
-                 'Type `savepath` to make the installation permament.\n']);
+        fprintf(['Anymatrix installed.\n' ...
+                 'Type `savepath` to make the installation permanent.\n']);
     end
 end
 
@@ -458,30 +459,29 @@ end
 
 % Look for a pattern inside all matrix help comments in the collection.
 function found_IDs = lookfor_term(matrix_IDs, root_path, term)
-    assert(~isempty(term), ...
-           'Anymatrix command was not recognized (too less inputs).');
-    found_IDs = {};
-    for ID_cell = matrix_IDs.'
-        matrix_ID = ID_cell{1};
-        slashloc = find(matrix_ID == '/');
-        group_name = matrix_ID(1:slashloc-1);
-        matrix_name = matrix_ID(slashloc+1:end);
-        path_to_mat = [root_path '/groups/' group_name '/private/' matrix_name];
-        if strcmp('gallery', group_name)
-            H = help(['private/' matrix_name]);
-        elseif strcmp('matlab', group_name)
-            H = help(matrix_name);
-        else
-            H = help(path_to_mat);
-        end
-        if contains(H, term, 'IgnoreCase', true)
-            found_IDs = [found_IDs; matrix_ID];  %#ok<AGROW>
-            fprintf( '!' )
-        else
-            fprintf( '.' )
+    if ~islogical( term )
+        rescan = false;
+    else
+        rescan = term;
+    end
+    help_content = scan_help( matrix_IDs, root_path, rescan );
+    ids = [];
+    fprintf( 'The following matrices help texts contain the string ''%s'':\n', term );
+    for i = 1:numel( matrix_IDs )
+        if contains(help_content{i}, term, 'IgnoreCase', true)
+            ids = [ids i];  %#ok<AGROW>
+            fprintf( '    - %s\n', matrix_IDs{i} )
         end
     end
-    fprintf( '\n' )
+    fprintf( '\n' );
+    for i = ids
+        if contains(help_content{i}, term, 'IgnoreCase', true)
+            fprintf( '<strong>%s:</strong>\n', matrix_IDs{i} );
+            printf_highlight( help_content{i}, term );
+            fprintf( '\n' );
+        end
+    end
+    found_IDs = matrix_IDs(ids);
 end
 
 % Display info in the Contents.m of a specified group.

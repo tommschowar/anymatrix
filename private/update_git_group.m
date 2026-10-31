@@ -12,6 +12,7 @@ function update_git_group(root_path, group_ID, repo_ID)
         update_it(group_folder);
     end
     scan_filesystem(root_path, true);
+    scan_help(matrix_IDs, root_path, true);
 end
 
 function clone_it(repo_ID, group_ID, group_folder)

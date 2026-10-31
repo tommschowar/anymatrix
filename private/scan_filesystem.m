@@ -18,6 +18,7 @@ function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = sc
     end
 
     if isempty(set_IDs_) || rescan
+        fprintf( 'Anymatrix: Scanning matrices...\n' );
         set_IDs_ = scan_sets(root_path);
         group_IDs_ = scan_groups(root_path);
         matrix_IDs_ = scan_matrices(group_IDs_, root_path);
@@ -28,7 +29,7 @@ function [set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = sc
 
         supported_properties_ = scan_supported_properties(group_IDs_, root_path);
         check_properties(matrix_IDs_, properties_, supported_properties_)
-        disp('Anymatrix scanning done.');
+        fprintf('\bDone\n');
     end
 
     set_IDs = set_IDs_;
