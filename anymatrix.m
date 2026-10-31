@@ -101,6 +101,13 @@ function varargout = anymatrix(varargin)
 %   Numer. Algorithms 46(2), 189--194 (2007).
 %   https://doi.org/10.1007/s11075-007-9136-9
 
+root_path = fileparts([mfilename('fullpath'), '.m']);
+
+add_to_path(root_path);
+
+[set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = ...
+    scan_filesystem( root_path );
+
 % Check that MATLAB 2020b or higher is present.
 if verLessThan('matlab','9.9')
     error('MATLAB 2020b or newer is required.')
@@ -124,23 +131,7 @@ if (nargin > 1) && isstring(varargin{2})
     varargin{2} = convertStringsToChars(varargin{2});
 end
 
-% Flag used for performing the first scan of the file structure.
-persistent files_scanned
 
-% Get the directory containing the anymatrix.m file.
-root_path = fileparts(strcat(mfilename('fullpath'), '.m'));
-
-% Scan the file structure of the collection to obtain matrix, group and
-% set IDs, if it hasn't been scanned yet.
-if isempty(files_scanned)
-    % Add anymatrix/sets and anymatrix/testing to the search path.
-    addpath(strcat(root_path));
-    addpath(strcat(root_path, '/sets'));
-    addpath(strcat(root_path, '/testing'));
-    files_scanned = 1;
-end
-[set_IDs, group_IDs, matrix_IDs, properties, supported_properties] = ...
-    scan_filesystem( root_path );
 
 if nargin == 0
     help('anymatrix.m');
@@ -273,6 +264,18 @@ else
     [varargout{1:nargout}] = generate_matrix(command, varargin{2:nargin});
 end
 
+end
+
+%%
+function add_to_path(root_path)
+    % Add anymatrix/sets and anymatrix/testing to the search path.
+    persistent added
+    if isempty(added)
+        added = true;
+        addpath(root_path);
+        addpath([root_path, '/sets']);
+        addpath([root_path, '/testing']);    
+    end
 end
 
 % Search for matrices that have properties, according to a specified
