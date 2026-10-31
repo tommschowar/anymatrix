@@ -142,7 +142,7 @@ elseif startsWith('lookfor', command)
 
 elseif startsWith('properties', command)
     varargout{1} = do_properties(matrix_IDs, properties, ...
-                                 supported_properties, arg, varargin{:} );
+                                 supported_properties, arg, varargin{2:end} );
 
 elseif startsWith('scan', command)
     scan_filesystem(root_path, true);
@@ -190,7 +190,7 @@ function out = do_properties(matrix_IDs, properties, ...
         [~, I] = sort(lower(properties{strcmp(matrix_IDs, arg)}));
         out = properties{strcmp(matrix_IDs, arg)}(I);
     else
-        out = search_by_properties(matrix_IDs, properties, varargin(2:end));
+        out = search_by_properties(matrix_IDs, properties, varargin{1});
     end
 end
 
