@@ -8,7 +8,9 @@ P = {
     'bidiagonal'
     'binary'                % Elements 0 or 1
     'block Toeplitz'
+    'boolean'
     'built-in'              % Included in the base Anymatrix collection.
+    'cauchy'
     'circulant'
     'complex'
     'correlation'           % Symmetric positive (semi)definite with unit diagonal
@@ -37,6 +39,7 @@ P = {
     'nonfinite'             % some elements are non-finite
     'normal'                % Normal, but not symmetric, Hermitian, orthogonal, or unitary  % XX
     'orthogonal'
+    'orthonormal'
     'parameter-dependent'   % Matrix depends on one or more parameters other than the dimension
     'permutation'
     'positive'              % All positive entries
@@ -45,6 +48,7 @@ P = {
     'pseudo-orthogonal'     % Also known as J-orthogonal [10]
     'random'                % Random numbers are used in the construction
     'rank deficient'
+    'rational'              % entries of matrix are rational numbers (with small denominator)
     'real'
     'rectangular'
     'reducible'
@@ -56,7 +60,9 @@ P = {
     'square'
     'symbolic'              % The matrix is stored in the MATLAB symbolic format
     'row-stochastic'        % Nonnegative with unit row sums  % renamed from 'stochastic'
+    'column_stochastic'
     'symmetric'             % XX
+    'ternary'               % matrix only has entries {-1,0,1}
     'toeplitz'
     'totally nonnegative'   % Every submatrix has nonnegative determinant
     'totally positive'      % Every submatrix has positive determinant

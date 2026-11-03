@@ -1,6 +1,11 @@
-function [ help_content_ ] = scan_help( matrix_IDs, root_path, rescan )
+function [ help_content_ ] = scan_help( matrix_IDs, root_path, clear_content )
     persistent help_content
-    if isempty( help_content ) || rescan
+    if nargin >= 3 && clear_content
+        help_content = [];
+        help_content_ = [];
+        return;
+    end
+    if isempty( help_content )
         fprintf( 'Scanning help content of all matrices:     ' );
         help_content = cell( size(matrix_IDs) );
         for i = 1:numel( matrix_IDs )

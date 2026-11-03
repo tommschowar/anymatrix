@@ -161,7 +161,7 @@ function varargout = anymatrix(varargin)
         do_edit(matrix_IDs, args{:})
 
     elseif startsWith('lookfor', command)
-        varargout{1} = lookfor_term(matrix_IDs, root_path, args{:});
+        varargout{1} = lookfor_term(matrix_IDs, properties, root_path, args{:});
 
     % we check 'properties' before 'path',
     % so that 'p' becomes an abbreviation for 'properties'
@@ -177,7 +177,7 @@ function varargout = anymatrix(varargin)
 
     elseif startsWith('scan', command) && numel(args) == 0
         scan_filesystem(root_path, true);
-        lookfor_term(matrix_IDs, root_path, true);
+        lookfor_term(matrix_IDs, properties, root_path, true);
 
     elseif startsWith('scan', command)
         error('Anymatrix command was not recognized.');
@@ -458,7 +458,7 @@ function varargout = generate_matrix(matrix_ID, matrix_IDs, varargin)
 end
 
 % Look for a pattern inside all matrix help comments in the collection.
-function found_IDs = lookfor_term(matrix_IDs, root_path, term)
+function found_IDs = lookfor_term(matrix_IDs, properties, root_path, term)
     if ~islogical( term )
         rescan = false;
     else
@@ -470,7 +470,7 @@ function found_IDs = lookfor_term(matrix_IDs, root_path, term)
     end
     
     ids = [];
-    fprintf( 'The following matrices help texts contain the string ''%s'':\n', term );
+    fprintf( 'The following matrices help-texts contain the string ''%s'':\n', term );
     for i = 1:numel( matrix_IDs )
         if contains(help_content{i}, term, 'IgnoreCase', true)
             ids = [ids i];  %#ok<AGROW>
@@ -481,6 +481,9 @@ function found_IDs = lookfor_term(matrix_IDs, root_path, term)
     for i = ids
         if contains(help_content{i}, term, 'IgnoreCase', true)
             fprintf( '<strong>%s:</strong>\n', matrix_IDs{i} );
+            fprintf( 'Properties:\n' );
+            disp( properties{i} );
+            fprintf( '\n' );
             printf_highlight( help_content{i}, term );
             fprintf( '\n' );
         end
